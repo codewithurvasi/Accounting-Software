@@ -342,6 +342,22 @@ const handleAccountChange = (value) => {
     return "₹0";
   };
 
+  const formatMoney = (value) => {
+  return Number(value || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+const formatDate = (date) => {
+  if (!date) return "";
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
   const exportCSV = () => {
     const headers = [
       "Date",

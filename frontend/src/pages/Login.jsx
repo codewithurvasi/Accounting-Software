@@ -1,20 +1,129 @@
+import { useState } from "react";
 import { useDispatch } from "react-redux";
 import { login } from "../redux/authSlice";
 import { Building2, Lock, Mail, ShieldCheck } from "lucide-react";
 
+const demoUsers = [
+  {
+    id: 1,
+    fullName: "Admin User",
+    name: "Admin User",
+    email: "admin@acc.com",
+    password: "123456",
+    role: "Admin",
+    status: "Active",
+    permissions: [
+  "All Access",
+  "Dashboard",
+  "Expenses",
+
+  "Customers",
+  "Invoices",
+  "Sales Return",
+  "Payments Received",
+  "Customer Statement",
+
+  "Vendors",
+  "Bills",
+  "Purchase Return",
+  "Vendor Statement",
+  "Payments Made",
+
+  "Journal Entries",
+  "Ledger",
+
+  "Inventory",
+  "Stock Management",
+  "Warehouses",
+  "Stock Transfer",
+
+  "Profit & Loss",
+  "GST Reports",
+  "Sales Report",
+  "Purchase Report",
+
+  "Company Profile",
+  "Invoice Settings",
+  "Users & Roles",
+  "Backup",
+],
+  },
+  {
+    id: 2,
+    fullName: "Account Manager",
+    name: "Account Manager",
+    email: "accounts@acc.com",
+    password: "123456",
+    role: "Accountant",
+    status: "Active",
+    permissions: [
+      "Dashboard",
+      "Customers",
+      "Vendors",
+      "Invoices",
+      "Bills",
+      "Payments",
+      "Reports",
+    ],
+  },
+  {
+    id: 3,
+    fullName: "Sales User",
+    name: "Sales User",
+    email: "sales@acc.com",
+    password: "123456",
+    role: "Sales",
+    status: "Active",
+    permissions: ["Dashboard", "Customers", "Invoices", "Payments"],
+  },
+];
+
 export default function Login() {
   const dispatch = useDispatch();
+
+  const [email, setEmail] = useState("admin@acc.com");
+  const [password, setPassword] = useState("123456");
 
   const handleLogin = (e) => {
     e.preventDefault();
 
-    dispatch(
-      login({
-        name: "Admin",
-        email: "admin@ledgerpro.com",
-        role: "Super Admin",
-      })
+    const storedUsers = JSON.parse(localStorage.getItem("usersRoles")) || [];
+
+    const allUsers = [...demoUsers, ...storedUsers];
+
+    if (!storedUsers.length) {
+      localStorage.setItem("usersRoles", JSON.stringify(demoUsers));
+    }
+
+    const user = allUsers.find(
+      (u) =>
+        String(u.email).toLowerCase() === email.toLowerCase() &&
+        String(u.password) === String(password)
     );
+
+    if (!user) {
+      alert("Invalid email or password");
+      return;
+    }
+
+    if (user.status !== "Active") {
+      alert("This user is inactive. Please contact admin.");
+      return;
+    }
+
+    const loggedInUser = {
+      id: user.id,
+      name: user.fullName || user.name,
+      fullName: user.fullName || user.name,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions || [],
+      status: user.status,
+    };
+
+    localStorage.setItem("currentUser", JSON.stringify(loggedInUser));
+
+    dispatch(login(loggedInUser));
   };
 
   return (
@@ -26,7 +135,7 @@ export default function Login() {
               <Building2 size={30} />
             </div>
             <div>
-              <h1 className="text-3xl font-black">WEBIX ACC</h1>
+              <h1 className="text-3xl font-black">Namdev Traders</h1>
               <p className="text-sm text-slate-300">Accounting Admin Suite</p>
             </div>
           </div>
@@ -61,9 +170,11 @@ export default function Login() {
         <div className="p-6 sm:p-10">
           <div className="mb-8 lg:hidden">
             <h1 className="text-3xl font-black text-[var(--text)]">
-                WEBIX-ACC
+              Namdev Traders
             </h1>
-            <p className="text-sm text-[var(--muted)]">Accounting Admin Suite</p>
+            <p className="text-sm text-[var(--muted)]">
+              Accounting Admin Suite
+            </p>
           </div>
 
           <h2 className="text-3xl font-black text-[var(--text)]">
@@ -81,7 +192,8 @@ export default function Login() {
               <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3">
                 <Mail size={18} className="text-[var(--muted)]" />
                 <input
-                  defaultValue="admin@acc.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-transparent outline-none"
                 />
               </div>
@@ -94,7 +206,8 @@ export default function Login() {
               <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3">
                 <Lock size={18} className="text-[var(--muted)]" />
                 <input
-                  defaultValue="123456"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   type="password"
                   className="w-full bg-transparent outline-none"
                 />
@@ -107,10 +220,11 @@ export default function Login() {
           </form>
 
           <div className="mt-6 rounded-xl bg-[var(--surface-soft)] p-4 text-sm text-[var(--muted)]">
-            Demo Login:{" "}
-            <span className="font-bold text-[var(--text)]">
-              admin@acc.com / 123456
-            </span>
+            Demo Login:
+            <div className="mt-2 font-bold text-[var(--text)]">
+              Admin: admin@acc.com / 123456
+            </div>
+            
           </div>
         </div>
       </div>

@@ -68,6 +68,7 @@ const emptyForm = {
     warehouseName: "",
     qty: 1,
     rate: 0,
+    discount: 0,
     gst: 18,
   },
 ],
@@ -108,15 +109,24 @@ const activeWarehouses = warehouses.filter(
   const [toDate, setToDate] = useState("");
 
   const calculateSubtotal = (items = []) =>
-    items.reduce(
-      (sum, item) => sum + Number(item.qty || 0) * Number(item.rate || 0),
-      0,
-    );
+    items.reduce((sum, item) => {
+  const gross =
+    Number(item.qty || 0) * Number(item.rate || 0);
 
+  const discount = Number(item.discount || 0);
+
+  return sum + Math.max(gross - discount, 0);
+}, 0);
   const calculateGST = (items = []) =>
     items.reduce((sum, item) => {
-      const amount = Number(item.qty || 0) * Number(item.rate || 0);
-      return sum + (amount * Number(item.gst || 0)) / 100;
+      const gross =
+        Number(item.qty || 0) * Number(item.rate || 0);
+
+      const discount = Number(item.discount || 0);
+
+      const taxable = Math.max(gross - discount, 0);
+
+      return sum + (taxable  * Number(item.gst || 0)) / 100;
     }, 0);
 
   const calculateTotal = (items = []) =>
@@ -192,7 +202,14 @@ const activeWarehouses = warehouses.filter(
 const handleChange = (e) => {
   const { name, value } = e.target;
 
-  const total = calculateTotal(form.items);
+ const rawTotal = calculateTotal(form.items);
+
+const total = Math.round(rawTotal);
+
+const roundOff = Number(
+  (total - rawTotal).toFixed(2)
+);
+
 
   if (name === "status") {
     if (value === "Unpaid") {
@@ -334,6 +351,7 @@ const handleChange = (e) => {
   warehouseName: "",
   qty: 1,
   rate: 0,
+  discount: 0,
   gst: 18,
 },
       ],
@@ -348,6 +366,20 @@ const handleChange = (e) => {
     });
   };
 const handleSubmit = (e) => {
+
+  const invalidItem = form.items.find(
+  (item) =>
+    !item.productId ||
+    !item.warehouseId ||
+    Number(item.qty || 0) <= 0 ||
+    Number(item.rate || 0) <= 0
+);
+
+if (invalidItem) {
+  alert("Product, warehouse, valid qty aur rate required hai.");
+  return;
+}
+
   e.preventDefault();
 
   const total = calculateTotal(form.items);
@@ -363,6 +395,7 @@ const handleSubmit = (e) => {
 
     total,
     amount: total,
+    roundOff,
 
     paidAmount,
     balanceAmount,
@@ -382,14 +415,17 @@ const handleSubmit = (e) => {
   } else {
     dispatch(addBill(payload));
 
-    dispatch(
-      increaseProductStock(
-        payload.items.map((item) => ({
-          productId: item.productId,
-          qty: item.qty,
-        }))
-      )
-    );
+   dispatch(
+  increaseProductStock(
+    payload.items.map((item) => ({
+      productId: item.productId,
+      productName: item.product,
+      warehouseId: item.warehouseId,
+      warehouseName: item.warehouseName,
+      qty: Number(item.qty || 0),
+    }))
+  )
+);
 
     if (paidAmount > 0) {
       dispatch(
@@ -481,9 +517,19 @@ const handleSubmit = (e) => {
     URL.revokeObjectURL(url);
   };
 
-  const formSubtotal = calculateSubtotal(form.items);
-  const formGST = calculateGST(form.items);
-  const formTotal = formSubtotal + formGST;
+ const formSubtotal = calculateSubtotal(form.items);
+
+const formGST = calculateGST(form.items);
+
+const grossTotal = formSubtotal + formGST;
+
+const roundedTotal = Math.round(grossTotal);
+
+const roundOff = Number(
+  (roundedTotal - grossTotal).toFixed(2)
+);
+
+const formTotal = roundedTotal;
 
   return (
     <div className="space-y-6">
@@ -651,7 +697,7 @@ const handleSubmit = (e) => {
       {/* DESKTOP TABLE VIEW */}
       <div className="hidden overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm md:block">
         <table className="w-full min-w-[1150px] text-left">
-          <thead className="bg-[var(--surface-soft)] text-[var(--muted)]">
+          <thead className="bg-[var(--surface-soft)]">
             <tr>
               <Th>Bill No</Th>
               <Th>Vendor</Th>
@@ -736,6 +782,7 @@ const handleSubmit = (e) => {
           form={form}
           vendors={vendors}
           products={products}
+           activeWarehouses={activeWarehouses}
           dispatch={dispatch}
           onVendorSelect={handleVendorSelect}
           clearVendor={clearVendor}
@@ -751,6 +798,7 @@ const handleSubmit = (e) => {
           resetForm={resetForm}
           subtotal={formSubtotal}
           gstAmount={formGST}
+          roundOff={roundOff}
           total={formTotal}
           editMode={editMode}
         />
@@ -795,6 +843,7 @@ function BillModal({
   form,
   vendors,
   products,
+  activeWarehouses,
   dispatch,
   onVendorSelect,
   clearVendor,
@@ -810,6 +859,7 @@ function BillModal({
   resetForm,
   subtotal,
   gstAmount,
+  roundOff,
   total,
   editMode,
 }) {
@@ -903,22 +953,18 @@ function BillModal({
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-black">Bill Items</h3>
 
-              <button
-                type="button"
-                onClick={addItemRow}
-                className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-bold text-white"
-              >
-                + Add Item
-              </button>
+             
             </div>
 
-           <div className="overflow-visible rounded-2xl border border-[var(--border)]">
-              <table className="w-full min-w-[900px]">
+         <div className="relative w-full overflow-visible rounded-2xl border border-[var(--border)] bg-white">
+              <table className="w-full border-separate border-spacing-y-2 text-sm">
                 <thead className="bg-[var(--surface-soft)]">
                   <tr>
                     <Th>Product / Service</Th>
+                    <Th>Warehouse</Th>
                     <Th>Qty</Th>
                     <Th>Rate</Th>
+                    <Th>Discount</Th>
                     <Th>GST %</Th>
                     <Th>Amount</Th>
                     <Th>Action</Th>
@@ -927,8 +973,17 @@ function BillModal({
 
                 <tbody>
                   {form.items.map((item, index) => {
-                    const amount =
-                      Number(item.qty || 0) * Number(item.rate || 0);
+                   const gross =
+  Number(item.qty || 0) * Number(item.rate || 0);
+
+const discount = Number(item.discount || 0);
+
+const taxable = Math.max(gross - discount, 0);
+
+const gstAmount =
+  (taxable * Number(item.gst || 0)) / 100;
+
+const amount = taxable + gstAmount;
 
                     return (
                       <tr
@@ -953,6 +1008,29 @@ function BillModal({
                         </Td>
 
                         <Td>
+  <select
+    value={item.warehouseId || ""}
+    onChange={(e) => {
+      const wh = activeWarehouses.find(
+        (w) => String(w.id) === String(e.target.value)
+      );
+
+      handleItemChange(index, "warehouseId", wh?.id || "");
+      handleItemChange(index, "warehouseName", wh?.name || wh?.warehouseName || "");
+    }}
+    className="w-[180px] rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-2.5 text-sm outline-none"
+    required
+  >
+    <option value="">Select Warehouse</option>
+    {activeWarehouses.map((wh) => (
+      <option key={wh.id} value={wh.id}>
+        {wh.name || wh.warehouseName}
+      </option>
+    ))}
+  </select>
+</Td>
+
+                        <Td>
                           <input
                             type="number"
                             min="1"
@@ -960,7 +1038,7 @@ function BillModal({
                             onChange={(e) =>
                               handleItemChange(index, "qty", e.target.value)
                             }
-                            className="w-24 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
+                            className="w-[90px] rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2.5 outline-none"
                           />
                         </Td>
 
@@ -972,9 +1050,21 @@ function BillModal({
                             onChange={(e) =>
                               handleItemChange(index, "rate", e.target.value)
                             }
-                            className="w-32 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
+                            className="w-[110px] rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2.5 outline-none"
                           />
                         </Td>
+
+                        <Td>
+  <input
+    type="number"
+    min="0"
+    value={item.discount || 0}
+    onChange={(e) =>
+      handleItemChange(index, "discount", e.target.value)
+    }
+    className="w-24 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
+  />
+</Td>
 
                         <Td>
                           <input
@@ -990,15 +1080,27 @@ function BillModal({
 
                         <Td bold>₹{amount}</Td>
 
-                        <Td>
-                          <button
-                            type="button"
-                            onClick={() => removeItemRow(index)}
-                            className="rounded-lg bg-red-100 p-2 text-red-700"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </Td>
+<Td>
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={addItemRow}
+      className="rounded-lg bg-blue-100 px-3 py-2 text-xs font-bold text-blue-700"
+    >
+      + Add
+    </button>
+
+    {form.items.length > 1 && (
+      <button
+        type="button"
+        onClick={() => removeItemRow(index)}
+        className="rounded-lg bg-red-100 px-3 py-2 text-xs font-bold text-red-700"
+      >
+        Remove
+      </button>
+    )}
+  </div>
+</Td>
                       </tr>
                     );
                   })}
@@ -1010,6 +1112,10 @@ function BillModal({
           <div className="ml-auto max-w-md space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5">
             <SummaryRow label="Subtotal" value={`₹${subtotal}`} />
             <SummaryRow label="GST Input" value={`₹${gstAmount}`} />
+            <SummaryRow
+  label="Round Off"
+  value={`₹${roundOff > 0 ? "+" : ""}${roundOff}`}
+/>
 
             <div className="border-t border-[var(--border)] pt-4">
               <SummaryRow label="Grand Total" value={`₹${total}`} large />
@@ -1133,8 +1239,8 @@ function ViewBillModal({
   const total = calculateTotal(bill.items);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[95vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-[var(--surface)] p-6 shadow-2xl">
+   <div className="fixed inset-0 z-[9999] h-screen w-screen overflow-hidden bg-slate-50">
+  <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50">   
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-black">Bill Details</h2>
@@ -1170,6 +1276,7 @@ function ViewBillModal({
                 <Th>Product / Service</Th>
                 <Th>Qty</Th>
                 <Th>Rate</Th>
+                <Th>Discount</Th>
                 <Th>GST %</Th>
                 <Th>Amount</Th>
               </tr>
@@ -1185,7 +1292,8 @@ function ViewBillModal({
                     <Td>{item.qty}</Td>
                     <Td>₹{item.rate}</Td>
                     <Td>{item.gst}%</Td>
-                    <Td bold>₹{amount}</Td>
+                    <Td bold>₹{taxable.toFixed(2)}</Td>
+<Td bold>₹{amount.toFixed(2)}</Td>
                   </tr>
                 );
               })}
@@ -1505,7 +1613,7 @@ function ProductSearchBox({
   });
 
   return (
-    <div className="relative min-w-[260px] overflow-visible">
+    <div className="relative w-[240px] overflow-visible">
       <input
         ref={inputRef}
         value={value}

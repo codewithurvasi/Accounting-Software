@@ -38,40 +38,44 @@ BadgePercent,
 import { Settings } from "lucide-react";
 
 const links = [
-  { name: "Dashboard", path: "/", icon: LayoutDashboard },
-  { name: "Expenses", path: "/expenses", icon: Wallet },
+  { name: "Dashboard", path: "/", icon: LayoutDashboard, permission: "Dashboard" },
+  { name: "Expenses", path: "/expenses", icon: Wallet, permission: "Expenses" },
  
 ];
 
 const salesLinks = [
-  { name: "Customers", path: "/sales/customers", icon: Users },
-  { name: "Invoices", path: "/sales/invoices", icon: FileText },
-  { name: "Sales Return", path: "/sales/return", icon: Undo2 },
+  { name: "Customers", path: "/sales/customers", icon: Users, permission: "Customers" },
+  { name: "Invoices", path: "/sales/invoices", icon: FileText, permission: "Invoices" },
+  { name: "Sales Return", path: "/sales/return", icon: Undo2, permission: "Sales Return" },
   {
     name: "Payments Received",
     path: "/sales/payments-received",
     icon: CreditCard,
+    permission: "Payments Received"
   },
   {
     name: "Customer Statement",
     path: "/sales/customer-statement",
     icon: ScrollText,
+    permission: "Customer Statement"
   },
 ];
 
 const purchaseLinks = [
-  { name: "Vendors", path: "/purchase/vendors", icon: Truck },
-  { name: "Bills", path: "/purchase/bills", icon: Receipt },
-  { name: "Purchase Return", path: "/purchase/return", icon: Undo2 },
+  { name: "Vendors", path: "/purchase/vendors", icon: Truck, permission: "Vendors" },
+  { name: "Bills", path: "/purchase/bills", icon: Receipt, permission: "Bills" },
+  { name: "Purchase Return", path: "/purchase/return", icon: Undo2, permission: "Purchase Return" },
   {
     name: "Vendor Statement",
     path: "/purchase/vendor-statement",
     icon: FileText,
+    permission: "Vendor Statement"
   },
   {
     name: "Payments Made",
     path: "/purchase/payments-made",
     icon: CreditCard,
+    permission: "Payments Made"
   },
 ];
 
@@ -84,12 +88,12 @@ const accountsLinks = [
   {
     name: "Journal Entries",
     path: "/accounts/journal",
-    icon: FilePenLine,
+    icon: FilePenLine, permission: "Journal Entries"
   },
   {
     name: "Ledger",
     path: "/accounts/ledger",
-    icon: NotebookTabs,
+    icon: NotebookTabs, permission: "Ledger"
   },
   // {
   //   name: "Trial Balance",
@@ -99,14 +103,15 @@ const accountsLinks = [
 ];
 
 const inventoryLinks = [
-  { name: "Products", path: "/inventory", icon: List },
+  { name: "Products", path: "/inventory", icon: List, permission: "Inventory" },
   {
     name: "Stock Management",
     path: "/inventory/stock-management",
     icon: ArrowDownToLine,
+    permission: "Stock Management"
   },
-  { name: "Warehouses", path: "/inventory/warehouses", icon: MapPin },
-  { name: "Stock Transfer", path: "/inventory/transfer", icon: Repeat },
+  { name: "Warehouses", path: "/inventory/warehouses", icon: MapPin, permission: "Warehouses" },
+  { name: "Stock Transfer", path: "/inventory/transfer", icon: Repeat, permission: "Stock Transfer" },
   // { name: "Inventory Reports", path: "/inventory/reports", icon: BarChart3 },
 ];
 
@@ -114,10 +119,10 @@ const reportsLinks = [
   {
     name: "Profit & Loss",
     path: "/reports/profit-loss",
-    icon: PieChart,
+    icon: PieChart, permission: "Profit & Loss"
   },
  
-{ name: "GST Reports", path: "/reports/gst-reports", icon: FileText },
+{ name: "GST Reports", path: "/reports/gst-reports", icon: FileText, permission: "GST Reports" },
   // {
   //   name: "Balance Sheet",
   //   path: "/reports/balance-sheet",
@@ -135,12 +140,14 @@ const reportsLinks = [
     name: "Sales Report",
     path: "/reports/sales-report",
     icon: ShoppingCart,
+    permission: "Sales Report"
   },
 
   {
     name: "Purchase Report",
     path: "/reports/purchase-report",
     icon: ShoppingBag,
+    permission: "Purchase Report"
   },
   
 
@@ -152,6 +159,7 @@ const settingsLinks = [
     name: "Company Profile",
     path: "/settings/company-profile",
     icon: Building2,
+    permission: "Company Profile"
   },
   // {
   //   name: "Taxes / GST",
@@ -162,20 +170,41 @@ const settingsLinks = [
     name: "Invoice Settings",
     path: "/settings/invoice-settings",
     icon: SlidersHorizontal,
+    permission: "Invoice Settings"
   },
   {
     name: "Users & Roles",
     path: "/settings/users-roles",
     icon: ShieldCheck,
+    permission: "Users & Roles"
   },
   {
     name: "Backup",
     path: "/settings/backup",
     icon: Database,
+    permission: "Backup"
   },
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
+
+  const currentUser = JSON.parse(localStorage.getItem("currentUser")) || null;
+const userPermissions = currentUser?.permissions || [];
+
+const canAccess = (item) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "Admin") return true;
+  if (userPermissions.includes("All Access")) return true;
+
+  return userPermissions.includes(item.name);
+};
+
+const filterByPermission = (items) => {
+  return items.filter((item) => canAccess(item));
+};
+
+
+
   const location = useLocation();
 
   const isSalesActive = location.pathname.startsWith("/sales");
@@ -232,7 +261,7 @@ export default function Sidebar({ isOpen, onClose }) {
           </div>
 
           <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-hide px-5 pb-5">
-            {links.map((link) => {
+           {filterByPermission(links).map((link) => {
               const Icon = link.icon;
 
               return (
@@ -255,6 +284,7 @@ export default function Sidebar({ isOpen, onClose }) {
               );
             })}
 
+            {filterByPermission(salesLinks).length > 0 && (
             <div>
               <button
                 type="button"
@@ -279,7 +309,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
               {openSales && (
                 <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-                  {salesLinks.map((link) => {
+                  {filterByPermission(salesLinks).map((link) => {
                     const Icon = link.icon;
 
                     return (
@@ -303,7 +333,9 @@ export default function Sidebar({ isOpen, onClose }) {
                 </div>
               )}
             </div>
+            )}
 
+            
             <div>
               <button
                 type="button"
@@ -328,7 +360,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
               {openPurchase && (
                 <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-                  {purchaseLinks.map((link) => {
+                  {filterByPermission(purchaseLinks).map((link) => {
                     const Icon = link.icon;
 
                     return (
@@ -377,7 +409,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
               {openAccounts && (
                 <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-                  {accountsLinks.map((link) => {
+                 {filterByPermission(accountsLinks).map((link) => {
                     const Icon = link.icon;
 
                     return (
@@ -426,7 +458,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
               {openInventory && (
                 <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-                  {inventoryLinks.map((link) => {
+                  {filterByPermission(inventoryLinks).map((link) => {
                     const Icon = link.icon;
 
                     return (
@@ -472,7 +504,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   {openReports && (
     <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-      {reportsLinks.map((link) => {
+      {filterByPermission(reportsLinks).map((link) => {
         const Icon = link.icon;
 
         return (
@@ -521,7 +553,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   {openSettings && (
     <div className="ml-4 mt-2 space-y-1 border-l border-white/10 pl-3">
-      {settingsLinks.map((link) => {
+      {filterByPermission(settingsLinks).map((link) => {
         const Icon = link.icon;
 
         return (
