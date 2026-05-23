@@ -47,7 +47,7 @@ import TaxReport from "./pages/Reports/TaxReport";
 import SalesReport from "./pages/Reports/SalesReport";
 import PurchaseReport from "./pages/Reports/PurchaseReport";
 import InventoryReport from "./pages/Reports/InventoryReport";
-import CashBankBook from "./pages/reports/CashBankBook";
+import CashBankBook from "./pages/Reports/CashBankBook";
 import PurchaseRegister from "./pages/Reports/PurchaseRegiter";
 
 import CompanyProfile from "./pages/Settings/CompanyProfile";
