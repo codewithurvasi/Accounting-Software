@@ -18,61 +18,110 @@ import { Download, Printer, RotateCcw, Search } from "lucide-react";
 export default function Ledger() {
 
   const bills = useSelector((state) => state.bills?.bills || []);
+  const expenses = useSelector((state) => state.expenses?.expenses || []);
+  const salesReturns = useSelector(
+  (state) =>
+    state.salesReturns?.salesReturns ||
+    state.salesReturn?.salesReturns ||
+    state.salesReturn?.returns ||
+    []
+);
+const purchaseReturns = useSelector(
+  (state) =>
+    state.purchaseReturns?.returns ||
+    state.purchaseReturn?.returns ||
+    []
+);
+  const invoicesRedux = useSelector((state) => state.invoices?.invoices || []);
+const paymentsRedux = useSelector((state) => state.payments?.payments || []);
 
   const ledgerEntries = useMemo(() => {
-  const invoices = getSavedInvoices();
-  const payments = getSavedPayments();
+ const invoices = invoicesRedux.length ? invoicesRedux : getSavedInvoices();
+const payments = paymentsRedux.length ? paymentsRedux : getSavedPayments();
   const journalEntries = JSON.parse(
   localStorage.getItem("ledgerpro_journal_entries") || "[]"
 );
 
-  const invoiceEntries = invoices.flatMap((invoice) => {
-    const total = getInvoiceTotal(invoice);
-    const taxable = getInvoiceTaxable(invoice);
-    const gst = getInvoiceGST(invoice);
+ const invoiceEntries = invoices.flatMap((invoice) => {
+  const total = getInvoiceTotal(invoice);
+  const taxable = getInvoiceTaxable(invoice);
+  const gst = getInvoiceGST(invoice);
 
-    const invoiceNo = invoice.invoiceNo || invoice.id || "INV";
-    const date = invoice.date || invoice.invoiceDate || new Date().toISOString().slice(0, 10);
-    const customerName = invoice.customerName || invoice.customer || "Customer";
+  const invoiceNo = invoice.invoiceNo || invoice.id || "INV";
+  const date =
+    invoice.date ||
+    invoice.invoiceDate ||
+    new Date().toISOString().slice(0, 10);
 
-   const entries = [
-  {
-    id: `${invoiceNo}-ar`,
-    date,
-    account: "Accounts Receivable",
-    particular: `Sales Invoice - ${customerName}`,
-    voucherNo: invoiceNo,
-    voucherType: "Invoice",
-    debit: total,
-    credit: 0,
-  },
-  {
-    id: `${invoiceNo}-sales`,
-    date,
-    account: "Sales Revenue",
-    particular: `Sales Invoice - ${customerName}`,
-    voucherNo: invoiceNo,
-    voucherType: "Invoice",
-    debit: 0,
-    credit: taxable,
-  },
-];
+  const customerName =
+    invoice.customerName || invoice.customer || "Customer";
 
-if (gst > 0) {
-  entries.push({
-    id: `${invoiceNo}-gst`,
-    date,
-    account: "GST Payable",
-    particular: `Output GST - ${customerName}`,
-    voucherNo: invoiceNo,
-    voucherType: "GST",
-    debit: 0,
-    credit: gst,
-  });
+  const entries = [
+    {
+      id: `${invoiceNo}-ar`,
+      date,
+      account: customerName,
+      particular: `Sales Invoice - ${customerName}`,
+      voucherNo: invoiceNo,
+      voucherType: "Invoice",
+      debit: total,
+      credit: 0,
+    },
+  ];
+
+  if (taxable > 0) {
+    entries.push({
+      id: `${invoiceNo}-sales`,
+      date,
+      account: "Sales Revenue",
+      particular: `Sales Invoice - ${customerName}`,
+      voucherNo: invoiceNo,
+      voucherType: "Invoice",
+      debit: 0,
+      credit: taxable,
+    });
+  }
+
+ if (gst > 0) {
+  if (invoice.gstType === "IGST") {
+    entries.push({
+      id: `${invoiceNo}-igst`,
+      date,
+      account: "Output IGST",
+      particular: `Output IGST - ${customerName}`,
+      voucherNo: invoiceNo,
+      voucherType: "GST",
+      debit: 0,
+      credit: gst,
+    });
+  } else {
+    entries.push(
+      {
+        id: `${invoiceNo}-cgst`,
+        date,
+        account: "Output CGST",
+        particular: `Output CGST - ${customerName}`,
+        voucherNo: invoiceNo,
+        voucherType: "GST",
+        debit: 0,
+        credit: gst / 2,
+      },
+      {
+        id: `${invoiceNo}-sgst`,
+        date,
+        account: "Output SGST",
+        particular: `Output SGST - ${customerName}`,
+        voucherNo: invoiceNo,
+        voucherType: "GST",
+        debit: 0,
+        credit: gst / 2,
+      }
+    );
+  }
 }
 
-return entries;
-  });
+  return entries;
+});
 
   const paymentEntries = payments.flatMap((payment) => {
     const amount = Number(payment.amount || payment.receivedAmount || 0);
@@ -99,7 +148,7 @@ return entries;
       {
         id: `${paymentNo}-ar`,
         date,
-        account: "Accounts Receivable",
+       account: customerName,
         particular: `Payment Received - ${customerName}`,
         voucherNo: paymentNo,
         voucherType: "Receipt",
@@ -130,9 +179,10 @@ return entries;
       credit: 0,
     },
     {
-      id: `${billNo}-ap`,
-      date,
-      account: "Accounts Payable",
+      
+  id: `${billNo}-vendor`,
+  date,
+  account: vendorName,
       particular: `Purchase Bill - ${vendorName}`,
       voucherNo: billNo,
       voucherType: "Bill",
@@ -141,18 +191,325 @@ return entries;
     },
   ];
 
-  if (gst > 0) {
+if (gst > 0) {
+  entries.push({
+    id: `${billNo}-gst-input`,
+    date,
+    account: "GST Input Credit",
+    particular: `Input GST - ${vendorName}`,
+    voucherNo: billNo,
+    voucherType: "GST",
+    debit: gst,
+    credit: 0,
+  });
+}
+
+  return entries;
+});
+
+const salesReturnEntries = salesReturns.flatMap((item) => {
+  const itemsTaxable = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+
+    return sum + qty * rate;
+  }, 0);
+
+  const taxable = Number(
+    item.taxableAmount ||
+      item.subtotal ||
+      item.subTotal ||
+      item.returnTaxable ||
+      itemsTaxable ||
+      0
+  );
+
+  const itemsGst = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    const gstRate = Number(row.gst || row.gstRate || 0);
+
+    return sum + (qty * rate * gstRate) / 100;
+  }, 0);
+
+  const gst = Number(
+    item.gstAmount ||
+      item.gst ||
+      item.totalGst ||
+      item.returnGst ||
+      itemsGst ||
+      0
+  );
+
+  const total = Number(
+    item.totalAmount ||
+      item.grandTotal ||
+      item.returnAmount ||
+      item.totalReturnAmount ||
+      item.total ||
+      item.amount ||
+      taxable + gst ||
+      0
+  );
+
+  if (total <= 0) return [];
+
+  const returnNo = item.returnNo || item.salesReturnNo || item.id || "SR";
+  const customerName = item.customer || item.customerName || "Customer";
+  const date =
+    item.date || item.returnDate || new Date().toISOString().slice(0, 10);
+
+  const entries = [];
+
+  if (taxable > 0) {
     entries.push({
-      id: `${billNo}-gst-input`,
+      id: `${returnNo}-sales-return-dr`,
       date,
-      account: "GST Input Credit",
-      particular: `Input GST - ${vendorName}`,
-      voucherNo: billNo,
-      voucherType: "GST",
-      debit: gst,
+      account: "Sales Return",
+      particular: `Sales Return - ${customerName}`,
+      voucherNo: returnNo,
+      voucherType: "Sales Return",
+      debit: taxable,
       credit: 0,
     });
   }
+
+  if (gst > 0) {
+    if (item.gstType === "IGST") {
+      entries.push({
+        id: `${returnNo}-output-igst-dr`,
+        date,
+        account: "Output IGST",
+        particular: `Output IGST Reverse - ${customerName}`,
+        voucherNo: returnNo,
+        voucherType: "GST Reverse",
+        debit: gst,
+        credit: 0,
+      });
+    } else {
+      entries.push(
+        {
+          id: `${returnNo}-output-cgst-dr`,
+          date,
+          account: "Output CGST",
+          particular: `Output CGST Reverse - ${customerName}`,
+          voucherNo: returnNo,
+          voucherType: "GST Reverse",
+          debit: gst / 2,
+          credit: 0,
+        },
+        {
+          id: `${returnNo}-output-sgst-dr`,
+          date,
+          account: "Output SGST",
+          particular: `Output SGST Reverse - ${customerName}`,
+          voucherNo: returnNo,
+          voucherType: "GST Reverse",
+          debit: gst / 2,
+          credit: 0,
+        }
+      );
+    }
+  }
+
+  entries.push({
+    id: `${returnNo}-customer-cr`,
+    date,
+    account: customerName,
+    particular: `Sales Return - ${customerName}`,
+    voucherNo: returnNo,
+    voucherType: "Sales Return",
+    debit: 0,
+    credit: total,
+  });
+
+  return entries;
+});
+const purchaseReturnEntries = purchaseReturns.flatMap((item) => {
+  const itemsTaxable = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    return sum + qty * rate;
+  }, 0);
+
+  const itemsGst = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    const gstRate = Number(row.gst || row.gstRate || 0);
+    return sum + (qty * rate * gstRate) / 100;
+  }, 0);
+
+  const gst = Number(item.gstAmount || item.taxAmount || item.gst || itemsGst || 0);
+
+  const total = Number(
+    item.total ||
+      item.totalAmount ||
+      item.returnTotal ||
+      item.returnAmount ||
+      item.amount ||
+      itemsTaxable + gst ||
+      0
+  );
+
+  const taxable = Number(
+    item.taxableAmount ||
+      item.subtotal ||
+      item.subTotal ||
+      item.returnTaxable ||
+      itemsTaxable ||
+      total - gst ||
+      0
+  );
+
+  if (total <= 0) return [];
+
+  const returnNo =
+    item.returnNo || item.purchaseReturnNo || item.id || "PR";
+
+  const date =
+    item.returnDate || item.date || new Date().toISOString().slice(0, 10);
+
+  const vendor =
+    item.vendor || item.vendorName || item.supplierName || "Vendor";
+
+  return [
+    {
+      id: `${returnNo}-vendor-dr`,
+      date,
+      account: vendor,
+      particular: `Purchase Return - ${vendor}`,
+      voucherNo: returnNo,
+      voucherType: "Purchase Return",
+      debit: total,
+      credit: 0,
+    },
+    {
+      id: `${returnNo}-purchase-return-cr`,
+      date,
+      account: "Purchase Return",
+      particular: `Purchase Return - ${vendor}`,
+      voucherNo: returnNo,
+      voucherType: "Purchase Return",
+      debit: 0,
+      credit: taxable,
+    },
+    {
+      id: `${returnNo}-gst-input-cr`,
+      date,
+      account: "GST Input Credit",
+      particular: `Input GST Reversed - ${vendor}`,
+      voucherNo: returnNo,
+      voucherType: "GST Reverse",
+      debit: 0,
+      credit: gst,
+    },
+  ];
+});
+
+const expenseEntries = expenses.flatMap((expense) => {
+  const amount = Number(expense.amount || 0);
+  const gst = Number(expense.gst || 0);
+  const total = Number(expense.totalAmount || amount + gst || 0);
+
+  if (amount <= 0) return [];
+
+  const expenseNo = expense.expenseNo || expense.id || "EXP";
+  const date =
+    expense.date || expense.expenseDate || new Date().toISOString().slice(0, 10);
+
+  const expenseAccount = expense.category || expense.account || "Expense";
+  const paidTo = expense.paidTo || "Creditor";
+
+  const isPaid = expense.status === "Paid";
+
+  const creditAccount = isPaid
+    ? String(expense.mode || "").toLowerCase().includes("cash")
+      ? "Cash Account"
+      : "Bank Account"
+    : paidTo;
+
+  const entries = [
+    {
+      id: `${expenseNo}-expense`,
+      date,
+      account: expenseAccount,
+      particular: `Expense - ${paidTo}`,
+      voucherNo: expenseNo,
+      voucherType: isPaid ? "Payment Voucher" : "Expense Voucher",
+      debit: amount,
+      credit: 0,
+    },
+  ];
+
+  if (gst > 0) {
+    if (expense.gstType === "IGST") {
+      entries.push({
+        id: `${expenseNo}-input-igst`,
+        date,
+        account: "Input IGST",
+        particular: `Input GST - ${paidTo}`,
+        voucherNo: expenseNo,
+        voucherType: "GST",
+        debit: gst,
+        credit: 0,
+      });
+    } else {
+      entries.push(
+        {
+          id: `${expenseNo}-input-cgst`,
+          date,
+          account: "Input CGST",
+          particular: `Input CGST - ${paidTo}`,
+          voucherNo: expenseNo,
+          voucherType: "GST",
+          debit: gst / 2,
+          credit: 0,
+        },
+        {
+          id: `${expenseNo}-input-sgst`,
+          date,
+          account: "Input SGST",
+          particular: `Input SGST - ${paidTo}`,
+          voucherNo: expenseNo,
+          voucherType: "GST",
+          debit: gst / 2,
+          credit: 0,
+        }
+      );
+    }
+  }
+
+  const paidAmount = Number(expense.paidAmount || 0);
+const dueAmount = Number(expense.dueAmount || 0);
+
+if (paidAmount > 0) {
+  entries.push({
+    id: `${expenseNo}-paid-credit`,
+    date,
+    account:
+      String(expense.mode || "").toLowerCase().includes("cash")
+        ? "Cash Account"
+        : "Bank Account",
+    particular: `Expense Paid - ${paidTo}`,
+    voucherNo: expenseNo,
+    voucherType: "Payment Voucher",
+    debit: 0,
+    credit: paidAmount,
+  });
+}
+
+if (dueAmount > 0) {
+  entries.push({
+    id: `${expenseNo}-due-credit`,
+    date,
+    account: `Expense Payable - ${paidTo}`,
+    particular: `Expense Due - ${paidTo}`,
+    voucherNo: expenseNo,
+    voucherType: "Expense Voucher",
+    debit: 0,
+    credit: dueAmount,
+  });
+}
 
   return entries;
 });
@@ -176,23 +533,21 @@ const journalLedgerEntries = journalEntries
   ...invoiceEntries,
   ...paymentEntries,
   ...purchaseEntries,
+  ...salesReturnEntries,
+    ...purchaseReturnEntries,
+  ...expenseEntries,
   ...journalLedgerEntries,
 ];
-}, [bills]);
 
- const accounts = [
+}, [bills, expenses, invoicesRedux, paymentsRedux, salesReturns, purchaseReturns]);
+
+const accounts = [
   "All Accounts",
-  "Cash Account",
-  "Bank Account",
-  "Capital Account",
-"Rent Expense",
-"Salary Expense",
-  "Sales Revenue",
-  "Purchase Account",
-  "Accounts Receivable",
-  "Accounts Payable",
-  "GST Payable",
-  "GST Input Credit",
+  ...new Set(
+    ledgerEntries
+      .map((entry) => entry.account)
+      .filter(Boolean)
+  ),
 ];
 
   const [account, setAccount] = useState("All Accounts");
@@ -292,19 +647,32 @@ const handleAccountChange = (value) => {
           matchesEntryType
         );
       })
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+     .sort((a, b) => {
+  const dateDiff = new Date(a.date) - new Date(b.date);
+
+  if (dateDiff !== 0) return dateDiff;
+
+  return String(a.voucherNo).localeCompare(String(b.voucherNo));
+});
   }, [appliedFilters, ledgerEntries]);
 
-  let runningBalance = 0;
+ const runningBalances = {};
 
-  const ledgerRows = filteredEntries.map((entry) => {
-    runningBalance += Number(entry.debit || 0) - Number(entry.credit || 0);
+const ledgerRows = filteredEntries.map((entry) => {
+  const accountKey = entry.account || "Unknown";
 
-    return {
-      ...entry,
-      balance: runningBalance,
-    };
-  });
+  if (!runningBalances[accountKey]) {
+    runningBalances[accountKey] = 0;
+  }
+
+  runningBalances[accountKey] +=
+    Number(entry.debit || 0) - Number(entry.credit || 0);
+
+  return {
+    ...entry,
+    balance: runningBalances[accountKey],
+  };
+});
 
   const totalDebit = filteredEntries.reduce(
     (sum, entry) => sum + Number(entry.debit || 0),
@@ -511,7 +879,7 @@ const formatDate = (date) => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-[var(--sidebar)] p-6 text-white">
+    <div className="rounded-3xl border border-[#1e293b]/40">
         <h1 className="text-3xl font-black">Ledger</h1>
         <p className="mt-2 text-slate-300">
           View account-wise debit, credit and running balance history.
@@ -639,11 +1007,11 @@ const formatDate = (date) => {
                 <MobileInfo label="Type" value={item.voucherType} />
                 <MobileInfo
                   label="Debit"
-                  value={item.debit ? `₹${item.debit}` : "-"}
+                  value={item.debit ? `₹${formatMoney(item.debit)}` : "-"}
                 />
                 <MobileInfo
                   label="Credit"
-                  value={item.credit ? `₹${item.credit}` : "-"}
+                  value={item.credit ? `₹${formatMoney(item.credit)}` : "-"}
                 />
                 <MobileInfo
                   label="Balance"
@@ -662,7 +1030,7 @@ const formatDate = (date) => {
         </div>
 
         <div className="mt-6 hidden overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm md:block">
-          <table className="w-full min-w-[950px] text-left">
+         <table className="w-full min-w-[950px] border-separate border-spacing-0 text-left">
             <thead className="bg-[var(--surface-soft)] text-[var(--muted)]">
               <tr>
                 <Th>Date</Th>
@@ -679,14 +1047,14 @@ const formatDate = (date) => {
               {ledgerRows.map((item) => (
                 <tr
                   key={item.id}
-                  className="border-b border-[var(--border)] last:border-b-0"
+                 className="border-b border-[#eef2f7] transition hover:bg-[#f8fafc]"
                 >
                   <Td>{item.date}</Td>
                   <Td bold>{item.particular}</Td>
                   <Td>{item.voucherNo}</Td>
                   <Td>{item.voucherType}</Td>
-                  <Td>{item.debit ? `₹${item.debit}` : "-"}</Td>
-                  <Td>{item.credit ? `₹${item.credit}` : "-"}</Td>
+                  <Td>{item.debit ? `₹${formatMoney(item.debit)}` : "-"}</Td>
+                  <Td>{item.credit ? `₹${formatMoney(item.credit)}` : "-"}</Td>
                   <Td bold>{formatBalance(item.balance)}</Td>
                 </tr>
               ))}
@@ -758,14 +1126,22 @@ function StatCard({ title, value }) {
 
 function Th({ children }) {
   return (
-    <th className="px-5 py-4 text-left text-sm font-black uppercase">
+    <th className="bg-[#f8fafc] px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-[#64748b]">
       {children}
     </th>
   );
 }
 
 function Td({ children, bold }) {
-  return <td className={`px-5 py-4 ${bold ? "font-bold" : ""}`}>{children}</td>;
+  return (
+    <td
+      className={`whitespace-nowrap px-5 py-3 text-sm ${
+        bold ? "font-semibold text-[#111827]" : "text-[#374151]"
+      }`}
+    >
+      {children}
+    </td>
+  );
 }
 
 function MobileInfo({ label, value, strong }) {

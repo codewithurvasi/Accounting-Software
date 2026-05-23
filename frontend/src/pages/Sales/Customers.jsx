@@ -98,14 +98,21 @@ export default function Customers() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const payload = {
-      id: editCustomer ? editCustomer.id : Date.now(),
-      ...form,
-      name: form.name || `Customer ${form.phone}`,
-      balance: Number(form.openingBalance || 0),
-      openingBalance: Number(form.openingBalance || 0),
-      creditLimit: Number(form.creditLimit || 0),
-    };
+    const openingBalance = Number(form.openingBalance || 0);
+const balance =
+  form.balanceType === "Credit" ? -openingBalance : openingBalance;
+
+const payload = {
+  id: editCustomer ? editCustomer.id : Date.now(),
+  ...form,
+  name: form.name || `Customer ${form.phone}`,
+  gstin: String(form.gstin || "").toUpperCase(),
+  pan: String(form.pan || "").toUpperCase(),
+  balance,
+  openingBalance,
+  creditLimit: Number(form.creditLimit || 0),
+  status: form.status || "Active",
+};
 
     if (editCustomer) {
       dispatch(updateCustomer(payload));
@@ -225,7 +232,10 @@ export default function Customers() {
                 <Td>{customer.email || "-"}</Td>
                 <Td>{customer.phone}</Td>
                 <Td>{customer.gstin || "-"}</Td>
-                <Td bold>₹{customer.balance || customer.openingBalance || 0}</Td>
+                <Td bold>
+  ₹{Math.abs(Number(customer.balance || 0)).toLocaleString("en-IN")}
+  {Number(customer.balance || 0) >= 0 ? " Dr" : " Cr"}
+</Td>
                 
                 <Td>
                   <div className="flex items-center gap-2">
@@ -371,13 +381,43 @@ export default function Customers() {
               </Section>
 
               <Section title="">
-                <Input
-                  label="Opening Balance"
-                  name="openingBalance"
-                  type="number"
-                  value={form.openingBalance}
-                  onChange={handleChange}
-                />
+               <Input
+  label="Opening Balance"
+  name="openingBalance"
+  type="number"
+  value={form.openingBalance}
+  onChange={handleChange}
+/>
+
+<Select
+  label="Balance Type"
+  name="balanceType"
+  value={form.balanceType}
+  onChange={handleChange}
+  options={["Debit", "Credit"]}
+/>
+
+<Input
+  label="Credit Limit"
+  name="creditLimit"
+  type="number"
+  value={form.creditLimit}
+  onChange={handleChange}
+/>
+
+<Select
+  label="Payment Terms"
+  name="paymentTerms"
+  value={form.paymentTerms}
+  onChange={handleChange}
+  options={[
+    "Due on Receipt",
+    "Net 7 Days",
+    "Net 15 Days",
+    "Net 30 Days",
+    "Net 45 Days",
+  ]}
+/>
 
                 {/* <Select
                   label="Balance Type"

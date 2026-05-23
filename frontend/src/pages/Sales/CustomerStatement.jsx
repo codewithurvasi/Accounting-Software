@@ -45,60 +45,64 @@ const ledgerEntries = useMemo(() => {
         : 0,
   }));
 
-  const invoiceEntries = invoices.map((invoice) => ({
-    id: `INV-${invoice.id}`,
-    date: invoice.date || invoice.invoiceDate,
+ const invoiceEntries = invoices.map((invoice) => ({
+  id: `INV-${invoice.id}`,
+  date: invoice.date || invoice.invoiceDate,
+  customer: invoice.customer || invoice.customerName,
+  type: "Invoice",
+  particular: `Invoice ${invoice.invoiceNo || invoice.id}`,
+  debit: Number(
+    invoice.totalAmount ||
+    invoice.grandTotal ||
+    invoice.total ||
+    invoice.amount ||
+    0
+  ),
+  credit: 0,
+}));
+const paymentEntries = payments.map((payment) => ({
+  id: `PAY-${payment.id}`,
+  date: payment.date || payment.paymentDate,
+  customer: payment.customer || payment.customerName,
+  type: "Payment",
+  particular: `Payment ${payment.paymentNo || payment.id}`,
+  debit: 0,
+  credit: Number(payment.amount || payment.receivedAmount || 0),
+}));
 
-    customer: invoice.customer,
+const salesReturnEntries = salesReturns.map((item) => {
+  const itemsTotal = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    const gstRate = Number(row.gst || row.gstRate || 0);
 
-    type: "Invoice",
-    particular: `Invoice ${invoice.invoiceNo}`,
+    const taxable = qty * rate;
+    const gstAmount = (taxable * gstRate) / 100;
 
-    debit: Number(
-      invoice.amount ||
-      invoice.total ||
-      invoice.grandTotal ||
+    return sum + taxable + gstAmount;
+  }, 0);
+
+  const returnAmount = Number(
+    item.totalAmount ||
+      item.grandTotal ||
+      item.returnAmount ||
+      item.totalReturnAmount ||
+      item.total ||
+      item.amount ||
+      itemsTotal ||
       0
-    ),
+  );
 
-    credit: 0,
-  }));
-
-  const paymentEntries = payments.map((payment) => ({
-    id: `PAY-${payment.id}`,
-    date: payment.date,
-
-    customer: payment.customer,
-
-    type: "Payment",
-    particular: `Payment ${payment.paymentNo}`,
-
-    debit: 0,
-
-    credit: Number(payment.amount || 0),
-  }));
-
-  const salesReturnEntries = salesReturns.map((item) => ({
+  return {
     id: `SR-${item.id}`,
     date: item.date || item.returnDate,
-
-    customer: item.customer,
-
+    customer: item.customer || item.customerName,
     type: "Sales Return",
-
-    particular: `Sales Return ${
-      item.returnNo || item.salesReturnNo
-    }`,
-
+    particular: `Sales Return ${item.returnNo || item.salesReturnNo || item.id}`,
     debit: 0,
-
-    credit: Number(
-      item.amount ||
-      item.total ||
-      item.grandTotal ||
-      0
-    ),
-  }));
+    credit: returnAmount,
+  };
+});
 
   return [
     ...openingEntries,
@@ -216,13 +220,13 @@ const generateStatement = () => {
     : 0;
 
   const resetFilters = () => {
-    setCustomer("Rahul Traders");
+   setCustomer("All Customers");
     setSearch("");
     setFromDate("2026-05-01");
     setToDate("2026-05-31");
 
     setAppliedFilters({
-      customer: "Rahul Traders",
+      customer: "All Customers",
       search: "",
       fromDate: "2026-05-01",
       toDate: "2026-05-31",

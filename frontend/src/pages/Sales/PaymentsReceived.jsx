@@ -2,10 +2,9 @@ import { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   addPayment,
-  updatePayment,
   deletePayment,
 } from "../../redux/paymentSlice";
-import { updateInvoicePaymentStatus } from "../../redux/invoiceSlice";
+import { updateInvoicePaymentStatus, updateInvoice } from "../../redux/invoiceSlice";
 import {
   Plus,
   Search,
@@ -69,6 +68,13 @@ export default function PaymentsReceived() {
   const dispatch = useDispatch();
   const { payments } = useSelector((state) => state.payments);
   const { invoices } = useSelector((state) => state.invoices);
+
+  const getInvoiceStatus = (paidAmount, invoiceAmount) => {
+  if (Number(paidAmount || 0) >= Number(invoiceAmount || 0)) return "Paid";
+  if (Number(paidAmount || 0) > 0) return "Partial";
+  return "Unpaid";
+};
+  
   const [form, setForm] = useState({
     ...emptyForm,
     paymentNo: `PAY-${String(initialPayments.length + 1).padStart(3, "0")}`,
@@ -247,52 +253,54 @@ export default function PaymentsReceived() {
     setToDate("");
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+const handleSubmit = (e) => {
+  e.preventDefault();
 
-    const currentPayment = Number(form.currentPayment || 0);
+  const currentPayment = Number(form.currentPayment || 0);
 
-    if (!form.invoice || !form.customer) {
-      alert("Invoice/customer select karo.");
-      return;
-    }
+  if (!form.invoice || !form.customer) {
+    alert("Invoice/customer select karo.");
+    return;
+  }
 
-    if (currentPayment <= 0) {
-      alert("Current payment amount enter karo.");
-      return;
-    }
+  if (currentPayment <= 0) {
+    alert("Current payment amount enter karo.");
+    return;
+  }
 
-    if (!form.mode) {
-      alert("Please select payment mode.");
-      return;
-    }
+  if (!form.mode) {
+    alert("Please select payment mode.");
+    return;
+  }
 
-    if (currentPayment > Number(form.remainingAmount || 0)) {
-      alert("Payment remaining amount se zyada nahi ho sakta.");
-      return;
-    }
+  if (currentPayment > Number(form.remainingAmount || 0)) {
+    alert("Payment remaining amount se zyada nahi ho sakta.");
+    return;
+  }
 
-    const payload = {
-      ...form,
-      id: editMode ? form.id : Date.now(),
-      amount: currentPayment,
-      balanceAfterPayment: Math.max(
-        Number(form.remainingAmount || 0) - currentPayment,
-        0,
-      ),
-    };
-
-    dispatch(addPayment(payload));
-
-    dispatch(
-      updateInvoicePaymentStatus({
-        invoiceNo: form.invoice,
-        paidAmount: currentPayment,
-      }),
-    );
-
-    resetForm();
+  const payload = {
+    ...form,
+    id: editMode ? form.id : Date.now(),
+    invoiceNo: form.invoice,
+    amount: currentPayment,
+    source: "manual-payment",
+    balanceAfterPayment: Math.max(
+      Number(form.remainingAmount || 0) - currentPayment,
+      0
+    ),
   };
+
+  dispatch(addPayment(payload));
+
+  dispatch(
+    updateInvoicePaymentStatus({
+      invoiceNo: form.invoice,
+      paidAmount: currentPayment,
+    })
+  );
+
+  resetForm();
+};
 
   const handleEdit = (payment) => {
     const relatedInvoice = invoices.find(
@@ -335,12 +343,40 @@ export default function PaymentsReceived() {
     setShowModal(true);
   };
 
-  const handleDelete = (id) => {
-    const ok = window.confirm("Are you sure you want to delete this payment?");
-    if (!ok) return;
+const handleDelete = (payment) => {
+  const ok = window.confirm("Are you sure you want to delete this payment?");
+  if (!ok) return;
 
-    dispatch(deletePayment(id));
-  };
+  const relatedInvoice = invoices.find(
+    (invoice) =>
+      String(invoice.invoiceNo) === String(payment.invoiceNo || payment.invoice)
+  );
+
+  if (relatedInvoice) {
+    const invoiceAmount = Number(relatedInvoice.amount || relatedInvoice.total || 0);
+
+    const newPaidAmount = Math.max(
+      Number(relatedInvoice.paidAmount || 0) - Number(payment.amount || 0),
+      0
+    );
+
+    const newBalanceAmount = Math.max(invoiceAmount - newPaidAmount, 0);
+
+    const newStatus = getInvoiceStatus(newPaidAmount, invoiceAmount);
+
+    dispatch(
+      updateInvoice({
+        ...relatedInvoice,
+        paidAmount: newPaidAmount,
+        balanceAmount: newBalanceAmount,
+        status: newStatus,
+        paymentStatus: newStatus,
+      })
+    );
+  }
+
+  dispatch(deletePayment(payment.id));
+};
 
   const exportCSV = () => {
     const headers = [
@@ -543,7 +579,7 @@ export default function PaymentsReceived() {
                 <Pencil size={16} />
               </IconButton>
 
-              <IconButton onClick={() => handleDelete(payment.id)} color="red">
+              <IconButton onClick={() => handleDelete(payment)} color="red">
                 <Trash2 size={16} />
               </IconButton>
             </div>
@@ -598,8 +634,8 @@ export default function PaymentsReceived() {
                     >
                       <Eye size={16} />
                     </IconButton>
-                    {/* 
-              <IconButton
+                    
+              {/* <IconButton
                 onClick={() => handleEdit(payment)}
                 color="yellow"
               >
@@ -607,7 +643,7 @@ export default function PaymentsReceived() {
               </IconButton> */}
 
                     <IconButton
-                      onClick={() => handleDelete(payment.id)}
+                     onClick={() => handleDelete(payment)}
                       color="red"
                     >
                       <Trash2 size={16} />
@@ -743,7 +779,7 @@ function PaymentModal({
               </label>
 
               <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4">
-                <Search size={17} className="text-[var(--muted)]" />
+                
 
                 <input
                   value={invoiceSearch}
@@ -752,7 +788,7 @@ function PaymentModal({
                     setShowInvoiceSearch(true);
                   }}
                   onFocus={() => setShowInvoiceSearch(true)}
-                  placeholder="Invoice no ya customer name search karo..."
+                  placeholder="Enter Invoice no or customer name"
                   className="w-full bg-transparent py-3 outline-none"
                 />
               </div>

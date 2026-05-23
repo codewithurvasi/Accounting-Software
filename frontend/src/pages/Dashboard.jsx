@@ -38,23 +38,97 @@ export default function Dashboard() {
 const customers = useSelector((state) => state.customers?.customers || []);
 const bills = useSelector((state) => state.bills?.bills || []);
 const expenses = useSelector((state) => state.expenses?.expenses || []);
+const salesReturns = useSelector(
+  (state) =>
+    state.salesReturns?.salesReturns ||
+    state.salesReturn?.salesReturns ||
+    state.salesReturn?.returns ||
+    []
+);
 
 const journalEntries = JSON.parse(
   localStorage.getItem("ledgerpro_journal_entries") || "[]"
 );
 
  const dashboardData = useMemo(() => {
-  const salesTotal = invoices.reduce(
-    (sum, inv) => sum + Number(getInvoiceTotal(inv) || 0),
-    0
+ const salesTotal = invoices.reduce((sum, inv) => {
+  const taxable = Number(
+    inv.taxableAmount ||
+      inv.subtotal ||
+      inv.subTotal ||
+      inv.amount ||
+      getTaxableAmount(inv) ||
+      0
   );
+
+  const total = Number(getInvoiceTotal(inv) || 0);
+  const gst = Number(inv.gstAmount || inv.gst || inv.totalGst || 0);
+
+  return sum + (taxable || Math.max(total - gst, 0));
+}, 0);
+
+const salesReturnTotal = salesReturns.reduce((sum, item) => {
+  const itemsTaxable = (item.items || []).reduce((s, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    return s + qty * rate;
+  }, 0);
+
+  return (
+    sum +
+    Number(
+      item.taxableAmount ||
+        item.subtotal ||
+        item.subTotal ||
+        item.returnTaxable ||
+        itemsTaxable ||
+        0
+    )
+  );
+}, 0);
+
+const netSalesTotal = Math.max(salesTotal - salesReturnTotal, 0);
+
+
+
+
+
+  
+
+ 
 
   const paidTotal = invoices.reduce(
     (sum, inv) => sum + Number(getPaidAmount(inv) || inv.paidAmount || 0),
     0
   );
 
-  const pendingReceivables = salesTotal - paidTotal;
+ const pendingReceivables = Math.max(
+  invoices.reduce((sum, inv) => sum + Number(getInvoiceTotal(inv) || 0), 0) -
+    salesReturns.reduce((sum, item) => {
+      const itemsTotal = (item.items || []).reduce((s, row) => {
+        const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+        const rate = Number(row.rate || row.price || 0);
+        const gstRate = Number(row.gst || row.gstRate || 0);
+        const taxable = qty * rate;
+        return s + taxable + (taxable * gstRate) / 100;
+      }, 0);
+
+      return (
+        sum +
+        Number(
+          item.totalAmount ||
+            item.grandTotal ||
+            item.returnAmount ||
+            item.total ||
+            item.amount ||
+            itemsTotal ||
+            0
+        )
+      );
+    }, 0) -
+    paidTotal,
+  0
+);
 
   const purchaseTotal = bills.reduce(
     (sum, bill) => sum + Number(getBillTotal(bill) || 0),
@@ -81,7 +155,7 @@ const journalEntries = JSON.parse(
     );
 
   const totalExpenses = purchaseTotal + expenseTotal + journalExpense;
-  const netProfit = salesTotal - totalExpenses;
+  const netProfit = netSalesTotal - totalExpenses;
 
   const recentInvoices = [...invoices]
     .slice()
@@ -116,7 +190,7 @@ const journalEntries = JSON.parse(
   ];
 
   return {
-    salesTotal,
+   salesTotal: netSalesTotal,
     totalInvoices: invoices.length,
     customersCount: customers.length,
     netProfit,
@@ -131,118 +205,227 @@ const journalEntries = JSON.parse(
   
 
  
+return (
+  <div className="space-y-7">
+    {/* SaaS Header */}
+    <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-7 text-white shadow-xl">
+      <div className="absolute right-0 top-0 h-40 w-40 rounded-full bg-blue-500/20 blur-3xl" />
+      <div className="absolute bottom-0 left-1/3 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl" />
 
-  return (
-    <div className="space-y-6">
-      <div className="rounded-3xl bg-[var(--sidebar)] p-6 text-white">
-        <h1 className="text-3xl font-black">Financial Dashboard</h1>
-        <p className="mt-2 text-slate-300">
-          Real-time overview of income, expenses, invoices and business health.
-        </p>
-      </div>
-
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        <ReportCard title="Total Sales" value={`₹${dashboardData.salesTotal.toLocaleString("en-IN")}`} icon={IndianRupee} trend="From sales invoices" />
-<ReportCard title="Total Invoices" value={dashboardData.totalInvoices} icon={FileText} trend="Saved invoices" />
-<ReportCard title="Customers" value={dashboardData.customersCount} icon={Users} trend="Total customers" />
-<ReportCard title="Net Profit" value={`₹${dashboardData.netProfit.toLocaleString("en-IN")}`} icon={TrendingUp} trend="Sales - expenses" />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-          <h2 className="mb-5 text-xl font-black text-[var(--text)]">Monthly Revenue</h2>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dashboardData.revenueData}>
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={4} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-200">
+            Accounting Overview
+          </p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight">
+            Financial Dashboard
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+            Track sales, invoices, receivables, payables and business performance
+            from one clean workspace.
+          </p>
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-          <h2 className="mb-5 text-xl font-black text-[var(--text)]">Expense Overview</h2>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dashboardData.expenseData}>
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="var(--accent)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 backdrop-blur">
+          <p className="text-xs text-slate-300">Business Health</p>
+          <p className="mt-1 text-2xl font-black">
+            {dashboardData.netProfit >= 0 ? "Profitable" : "Loss"}
+          </p>
         </div>
       </div>
+    </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-          <Wallet className="mb-3 text-[var(--primary)]" />
-          <p className="text-sm text-[var(--muted)]">Pending Receivables</p>
-          <h3 className="text-3xl font-black text-[var(--text)]">₹{dashboardData.pendingReceivables.toLocaleString("en-IN")}</h3>
-        </div>
+    {/* Top Cards */}
+    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <ReportCard
+        title="Total Sales"
+        value={`₹${Math.round(dashboardData.salesTotal).toLocaleString("en-IN")}`}
+        icon={IndianRupee}
+        trend="From sales invoices"
+      />
+      <ReportCard
+        title="Total Invoices"
+        value={dashboardData.totalInvoices}
+        icon={FileText}
+        trend="Saved invoices"
+      />
+      <ReportCard
+        title="Customers"
+        value={dashboardData.customersCount}
+        icon={Users}
+        trend="Total customers"
+      />
+      <ReportCard
+        title={dashboardData.netProfit >= 0 ? "Net Profit" : "Net Loss"}
+        value={`₹${Math.abs(Math.round(dashboardData.netProfit)).toLocaleString("en-IN")}`}
+        icon={TrendingUp}
+        trend="Sales - expenses"
+      />
+    </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-          <Receipt className="mb-3 text-[var(--primary)]" />
-          <p className="text-sm text-[var(--muted)]">Pending Payables</p>
-          <h3 className="text-3xl font-black text-[var(--text)]">₹{dashboardData.pendingPayables.toLocaleString("en-IN")}</h3>
-        </div>
-      </div>
-
-     <div>
-  <h2 className="mb-4 text-xl font-black text-[var(--text)]">
-    Recent Invoices
-  </h2>
-
-  {/* Mobile Card View */}
-  <div className="grid gap-4 md:hidden">
-    {dashboardData.recentInvoices.map((invoice, index) => (
-      <div
-        key={index}
-        className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm"
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] pb-3">
+    {/* Charts */}
+    <div className="grid gap-6 xl:grid-cols-2">
+      <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-black">{invoice.invoice}</h3>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {invoice.customer}
+            <h2 className="text-lg font-black text-slate-950">
+              Monthly Revenue
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Sales performance by month
+            </p>
+          </div>
+        </div>
+
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={dashboardData.revenueData}>
+              <XAxis dataKey="month" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} />
+              <Tooltip
+                formatter={(value) =>
+                  `₹${Number(value || 0).toLocaleString("en-IN")}`
+                }
+              />
+              <Line
+                type="monotone"
+                dataKey="revenue"
+                stroke="var(--primary)"
+                strokeWidth={4}
+                dot={{ r: 5 }}
+                activeDot={{ r: 7 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">
+              Expense Overview
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Purchases, direct expenses and journal expenses
+            </p>
+          </div>
+        </div>
+
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dashboardData.expenseData}>
+              <XAxis dataKey="name" tickLine={false} axisLine={false} />
+              <YAxis tickLine={false} axisLine={false} />
+              <Tooltip
+                formatter={(value) =>
+                  `₹${Number(value || 0).toLocaleString("en-IN")}`
+                }
+              />
+              <Bar dataKey="value" fill="var(--accent)" radius={[12, 12, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+
+    {/* Receivable / Payable */}
+    <div className="grid gap-5 md:grid-cols-2">
+      <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">
+              Pending Receivables
+            </p>
+            <h3 className="mt-2 text-3xl font-black text-slate-950">
+              ₹{Math.round(dashboardData.pendingReceivables).toLocaleString("en-IN")}
+            </h3>
+            <p className="mt-2 text-xs font-semibold text-emerald-600">
+              Amount to receive from customers
             </p>
           </div>
 
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-bold ${
-              invoice.status === "Paid"
-                ? "bg-green-100 text-green-700"
-                : invoice.status === "Partial"
-                ? "bg-yellow-100 text-yellow-700"
-                : "bg-red-100 text-red-700"
-            }`}
-          >
-            {invoice.status}
-          </span>
-        </div>
-
-        <div className="mt-3 rounded-xl bg-[var(--surface-soft)] p-3">
-          <p className="text-xs font-bold uppercase text-[var(--muted)]">
-            Amount
-          </p>
-          <p className="mt-1 text-lg font-black">{invoice.amount}</p>
+          <div className="rounded-2xl bg-blue-50 p-4 text-blue-600">
+            <Wallet size={28} />
+          </div>
         </div>
       </div>
-    ))}
-  </div>
 
-  {/* Desktop Table View */}
-  <div className="hidden md:block">
-    <Table
-      columns={["Invoice", "Customer", "Amount", "Status"]}
-      data={dashboardData.recentInvoices}
-    />
-  </div>
-</div>
+      <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-500">
+              Pending Payables
+            </p>
+            <h3 className="mt-2 text-3xl font-black text-slate-950">
+              ₹{Math.round(dashboardData.pendingPayables).toLocaleString("en-IN")}
+            </h3>
+            <p className="mt-2 text-xs font-semibold text-rose-600">
+              Amount to pay to vendors
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-rose-50 p-4 text-rose-600">
+            <Receipt size={28} />
+          </div>
+        </div>
+      </div>
     </div>
-  );
+
+    {/* Recent Invoices */}
+    <div className="rounded-[26px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">Recent Invoices</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Latest saved sales invoices
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:hidden">
+        {dashboardData.recentInvoices.map((invoice, index) => (
+          <div
+            key={index}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-slate-950">
+                  {invoice.invoice}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {invoice.customer}
+                </p>
+              </div>
+
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  invoice.status === "Paid"
+                    ? "bg-green-100 text-green-700"
+                    : invoice.status === "Partial"
+                    ? "bg-yellow-100 text-yellow-700"
+                    : "bg-red-100 text-red-700"
+                }`}
+              >
+                {invoice.status}
+              </span>
+            </div>
+
+            <p className="mt-4 text-lg font-black text-slate-950">
+              {invoice.amount}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block">
+        <Table
+          columns={["Invoice", "Customer", "Amount", "Status"]}
+          data={dashboardData.recentInvoices}
+        />
+      </div>
+    </div>
+  </div>
+);
 }

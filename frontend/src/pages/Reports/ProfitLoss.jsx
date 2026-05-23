@@ -21,6 +21,13 @@ export default function ProfitLoss() {
   const invoices = useSelector((state) => state.invoices?.invoices || []);
 const bills = useSelector((state) => state.bills?.bills || []);
 const expensesData = useSelector((state) => state.expenses?.expenses || []);
+const salesReturns = useSelector(
+  (state) =>
+    state.salesReturns?.salesReturns ||
+    state.salesReturn?.salesReturns ||
+    state.salesReturn?.returns ||
+    []
+);
 
 const journalEntries = JSON.parse(
   localStorage.getItem("ledgerpro_journal_entries") || "[]"
@@ -128,6 +135,49 @@ const journalEntries = JSON.parse(
     }
   });
 
+  salesReturns.forEach((item) => {
+  const itemsTaxable = (item.items || []).reduce((sum, row) => {
+    const qty = Number(
+      row.qty || row.returnQty || row.quantity || 0
+    );
+
+    const rate = Number(
+      row.rate || row.price || 0
+    );
+
+    return sum + qty * rate;
+  }, 0);
+
+  const taxable = Number(
+    item.taxableAmount ||
+      item.subtotal ||
+      item.subTotal ||
+      item.returnTaxable ||
+      itemsTaxable ||
+      0
+  );
+
+  if (taxable > 0) {
+    rows.push({
+      id: `sales-return-${item.id}`,
+      date: item.date || item.returnDate,
+
+      category: "Expense",
+
+      group: "Direct Expense",
+
+      account: "Sales Return",
+
+      amount: taxable,
+
+      source:
+        item.returnNo ||
+        item.salesReturnNo ||
+        item.id,
+    });
+  }
+});
+
   journalEntries
     .filter((entry) => entry.status === "Posted")
     .forEach((entry) => {
@@ -183,7 +233,13 @@ const journalEntries = JSON.parse(
     });
 
   return rows;
-}, [invoices, bills, expensesData, journalEntries]);
+}, [
+  invoices,
+  bills,
+  expensesData,
+  journalEntries,
+  salesReturns,
+]);
 
 const filteredData = useMemo(() => {
   return profitLossRows.filter((item) => {
@@ -360,14 +416,14 @@ const profitMargin = totalIncome
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl bg-[var(--sidebar)] p-6 text-white">
+     <div className="rounded-2xl border border-slate-200 bg-slate-950 px-5 py-4 text-white shadow-sm">
         <h1 className="text-3xl font-black">Profit & Loss Report</h1>
         <p className="mt-2 text-slate-300">
           Analyze income, expenses, gross profit and net profit/loss.
         </p>
       </div>
 
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-black">Report Filters</h2>
 
@@ -483,7 +539,7 @@ const profitMargin = totalIncome
 </div>
 
 {/* Desktop Table */}
-<div className="mt-6 hidden overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm md:block">
+<div className="mt-6 hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
   <table className="w-full min-w-[900px] text-left">
     <thead className="bg-[var(--surface-soft)] text-[var(--muted)]">
       <tr>
@@ -552,31 +608,42 @@ const profitMargin = totalIncome
     </div>
   );
 }
-
 function ReportSection({ title, data, total }) {
+  const isExpense = title === "Expenses";
+
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-      <div className="border-b border-[var(--border)] p-5">
-        <h2 className="text-xl font-black">{title}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={`border-b px-4 py-3 ${isExpense ? "bg-red-50" : "bg-emerald-50"}`}>
+        <h2 className={`text-sm font-black uppercase tracking-wide ${isExpense ? "text-red-700" : "text-emerald-700"}`}>
+          {title}
+        </h2>
       </div>
 
-      {data.map((item) => (
-        <div
-          key={item.id}
-          className="flex justify-between border-b border-[var(--border)] px-5 py-4 last:border-b-0"
-        >
-          <div>
-            <span className="font-bold">{item.account}</span>
-            <p className="text-xs text-[var(--muted)]">{item.group}</p>
-          </div>
-
-          <span className="font-bold">₹{item.amount}</span>
+      {data.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-slate-500">
+          No records found
         </div>
-      ))}
+      ) : (
+        data.map((item) => (
+          <div
+            key={item.id}
+            className="flex justify-between border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
+          >
+            <div>
+              <span className="font-bold text-slate-900">{item.account}</span>
+              <p className="text-xs text-slate-500">{item.group}</p>
+            </div>
 
-      <div className="flex justify-between bg-[var(--surface-soft)] px-5 py-4 font-black">
+            <span className="font-black text-slate-950">
+              ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+            </span>
+          </div>
+        ))
+      )}
+
+      <div className="flex justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black">
         <span>Total {title}</span>
-        <span>₹{total}</span>
+        <span>₹{Number(total || 0).toLocaleString("en-IN")}</span>
       </div>
     </div>
   );
@@ -601,28 +668,34 @@ function Input({ label, value, onChange, type = "text", min }) {
 function StatCard({ title, value, highlight }) {
   const color =
     highlight === "profit"
-      ? "text-green-700"
+      ? "text-emerald-700"
       : highlight === "loss"
       ? "text-red-600"
-      : "";
+      : "text-slate-950";
 
   return (
-    <div className="card rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-sm">
-      <p className="text-sm font-bold text-[var(--muted)]">{title}</p>
-      <h2 className={`mt-2 text-2xl font-black ${color}`}>{value}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+        {title}
+      </p>
+      <h2 className={`mt-2 text-xl font-black ${color}`}>{value}</h2>
     </div>
   );
 }
 
 function Th({ children }) {
   return (
-    <th className="px-5 py-4 text-left text-sm font-black uppercase">
+    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide">
       {children}
     </th>
   );
 }
 
 function Td({ children, bold }) {
-  return <td className={`px-5 py-4 ${bold ? "font-bold" : ""}`}>{children}</td>;
+  return (
+    <td className={`px-4 py-3 text-sm ${bold ? "font-bold text-slate-950" : "text-slate-700"}`}>
+      {children}
+    </td>
+  );
 }
 function MobileInfo({ label, value, strong }) { return ( <div className="rounded-xl bg-[var(--surface-soft)] p-3"> <p className="text-xs font-bold uppercase text-[var(--muted)]"> {label} </p> <p className={`mt-1 text-sm ${strong ? "font-black" : "font-bold"}`}> {value || "-"} </p> </div> ); }

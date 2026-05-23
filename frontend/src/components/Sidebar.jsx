@@ -123,17 +123,18 @@ const reportsLinks = [
   },
  
 { name: "GST Reports", path: "/reports/gst-reports", icon: FileText, permission: "GST Reports" },
+
   // {
   //   name: "Balance Sheet",
   //   path: "/reports/balance-sheet",
   //   icon: Landmark,
   // },
 
-  // {
-  //   name: "Cash Flow",
-  //   path: "/reports/cash-flow",
-  //   icon: Activity,
-  // },
+  {
+    name: "Cash Flow",
+    path: "/reports/cash-flow",
+    icon: Activity,
+  },
 
  
   {
@@ -149,6 +150,12 @@ const reportsLinks = [
     icon: ShoppingBag,
     permission: "Purchase Report"
   },
+  {
+  name: "Cash & Bank Book",
+  path: "/reports/cash-bank-book",
+  icon: BookOpen,
+  permission: "Cash & Bank Book"
+}
   
 
   

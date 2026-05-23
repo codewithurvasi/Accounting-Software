@@ -36,6 +36,7 @@ const tabs = [
   { key: "gstr1", label: "GSTR-1" },
   { key: "gstr2b", label: "GSTR-2B / ITC" },
   { key: "gstr3b", label: "GSTR-3B Summary" },
+  { key: "PurchaseRegister", label: "Purchase Register" },
   { key: "hsn", label: "HSN Summary" },
   { key: "docs", label: "Document Summary" },
   { key: "download", label: "Download" },
@@ -229,6 +230,7 @@ export default function GstReports() {
 
   const invoices = useSelector((state) => state.invoices?.invoices || []);
 const bills = useSelector((state) => state.bills?.bills || []);
+const expenses = useSelector((state) => state.expenses?.expenses || []);
 
 const salesReturnsRedux = useSelector(
   (state) =>
@@ -501,6 +503,35 @@ const dynamicSupplierInvoices = useMemo(() => {
   });
 }, [bills]);
 
+const dynamicExpenseItc = useMemo(() => {
+  return expenses
+    .filter(
+      (expense) =>
+        expense.gstApplicable &&
+        expense.inputGstEligible &&
+        Number(expense.gst || 0) > 0
+    )
+    .map((expense) => {
+      const gst = Number(expense.gst || 0);
+      const isIgst = expense.gstType === "IGST";
+
+      return {
+        supplierGstin: expense.vendorGstin || "Unregistered",
+        supplierName: expense.paidTo || "Expense Vendor",
+        invoiceNo: expense.invoiceNo || expense.expenseNo,
+        invoiceDate: expense.invoiceDate || expense.date,
+        invoiceValue: Number(expense.totalAmount || 0),
+        taxableValue: Number(expense.amount || 0),
+        igst: isIgst ? gst : 0,
+        cgst: isIgst ? 0 : gst / 2,
+        sgst: isIgst ? 0 : gst / 2,
+        cess: 0,
+        itcAvailable: "Yes",
+        matchStatus: "Expense ITC",
+      };
+    });
+}, [expenses]);
+
   const [activeTab, setActiveTab] = useState("gstr1");
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -630,7 +661,7 @@ const filteredB2CS = useMemo(() => {
 }, [appliedFilters, dynamicB2CSInvoices]);
 
   const filteredSuppliers = useMemo(() => {
-    return dynamicSupplierInvoices.filter((x) => {
+   return [...dynamicSupplierInvoices, ...dynamicExpenseItc].filter((x) => {
       const text =
         `${x.supplierGstin} ${x.supplierName} ${x.invoiceNo}`.toLowerCase();
 
@@ -639,7 +670,7 @@ const filteredB2CS = useMemo(() => {
         dateMatch(x.invoiceDate)
       );
     });
- }, [appliedFilters, dynamicSupplierInvoices]);
+ }, [appliedFilters, dynamicSupplierInvoices, dynamicExpenseItc]);
 
 const creditDebitNotesFromStorage = [
   ...salesReturnsRedux.map((item) => ({
@@ -850,17 +881,22 @@ const summary = useMemo(() => {
 
   const itcAdjusted = journalGst.itcAdjusted;
 
-  const netTaxPayable =
-    outputTax - eligibleItc - gstPaidOrAdjusted + itcAdjusted;
+  const rawNetTax =
+  outputTax - eligibleItc - gstPaidOrAdjusted + itcAdjusted;
+
+const netTaxPayable = Math.max(rawNetTax, 0);
+
+const excessItc = rawNetTax < 0 ? Math.abs(rawNetTax) : 0;
 
   return {
-    outwardTaxable,
-    outputTax,
-    eligibleItc,
-    gstPaidOrAdjusted,
-    itcAdjusted,
-    netTaxPayable,
-  };
+  outwardTaxable,
+  outputTax,
+  eligibleItc,
+  gstPaidOrAdjusted,
+  itcAdjusted,
+  netTaxPayable,
+  excessItc,
+};
 }, [
   filteredB2B,
   filteredB2CL,
@@ -879,14 +915,16 @@ const summary = useMemo(() => {
     sgst: summary.outputTax / 2,
     cess: 0,
   },
-  {
-    table: "4(A)(5)",
-    description: "Eligible ITC",
-    taxableValue: 0,
-    igst: 0,
-    cgst: 0,
-    sgst: 0,
-    cess: 0,
+  
+    {
+  table: "4(A)(5)",
+  description: "Eligible ITC",
+  taxableValue: 0,
+  igst: 0,
+  cgst: summary.eligibleItc / 2,
+  sgst: summary.eligibleItc / 2,
+  cess: 0,
+
   },
   {
     table: "6.1",
@@ -1072,9 +1110,17 @@ const summary = useMemo(() => {
       <div id="gst-report-print">
         <div className="summary grid gap-5 md:grid-cols-4">
           <SummaryCard
-            title="Outward Taxable"
-            value={money(summary.outwardTaxable)}
-          />
+  title={
+    summary.excessItc > 0
+      ? "Excess ITC Credit"
+      : "Net Tax Payable"
+  }
+  value={
+    summary.excessItc > 0
+      ? money(summary.excessItc)
+      : money(summary.netTaxPayable)
+  }
+/>
           <SummaryCard title="Output Tax" value={money(summary.outputTax)} />
           <SummaryCard title="Eligible ITC" value={money(summary.eligibleItc)} />
           <SummaryCard
@@ -1266,6 +1312,46 @@ const summary = useMemo(() => {
             />
           </ReportCard>
         )}
+
+        {activeTab === "PurchaseRegister" && (
+  <ReportCard title="Purchase Register">
+    <SimpleTable
+      headers={[
+        "Bill No",
+        "Date",
+        "Vendor",
+        "GSTIN",
+        "Taxable",
+        "IGST",
+        "CGST",
+        "SGST",
+        "GST",
+        "Total",
+        "ITC",
+        "Status",
+      ]}
+      rows={filteredSuppliers.map((x) => [
+        x.invoiceNo,
+        x.invoiceDate,
+        x.supplierName,
+        x.supplierGstin,
+        money(x.taxableValue),
+        money(x.igst),
+        money(x.cgst),
+        money(x.sgst),
+        money(
+          Number(x.igst || 0) +
+            Number(x.cgst || 0) +
+            Number(x.sgst || 0) +
+            Number(x.cess || 0)
+        ),
+        money(x.invoiceValue),
+        x.itcAvailable,
+        x.matchStatus,
+      ])}
+    />
+  </ReportCard>
+)}
 
         {activeTab === "hsn" && (
           <ReportCard title="HSN Summary">

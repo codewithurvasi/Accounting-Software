@@ -21,15 +21,29 @@ const emptyForm = {
   id: null,
   expenseNo: "",
   date: new Date().toISOString().split("T")[0],
+
   category: "",
   paidTo: "",
+
   amount: "",
+  gstRate: "18",
   gst: "",
   totalAmount: "",
+
+  gstApplicable: false,
+  vendorGstin: "",
+  invoiceNo: "",
+  invoiceDate: "",
+  gstType: "CGST/SGST",
+  placeOfSupply: "",
+  inputGstEligible: true,
+
   mode: "Cash",
-  referenceNo: "",
-  status: "Paid",
-  notes: "",
+referenceNo: "",
+paidAmount: "",
+dueAmount: "",
+status: "Paid",
+notes: "",
 };
 
 const initialExpenses = [
@@ -170,34 +184,100 @@ const expenses = useSelector((state) => state.expenses?.expenses || []);
     setShowModal(false);
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+const handleChange = (e) => {
+  const { name, value, checked, type } = e.target;
 
-    const updatedForm = {
-      ...form,
-      [name]: value,
-    };
+  const fieldValue = type === "checkbox" ? checked : value;
 
-    if (name === "amount" || name === "gst") {
-      updatedForm.totalAmount =
-        Number(updatedForm.amount || 0) + Number(updatedForm.gst || 0);
-    }
-
-    setForm(updatedForm);
+  const updatedForm = {
+    ...form,
+    [name]: fieldValue,
   };
+  const companyProfile =
+  JSON.parse(localStorage.getItem("companyProfile")) || {};
+
+const companyState = companyProfile.state || "Madhya Pradesh";
+
+if (name === "placeOfSupply") {
+  const supplierState = String(value || "").toLowerCase();
+  const myState = String(companyState || "").toLowerCase();
+
+  updatedForm.gstType =
+    supplierState && supplierState.includes(myState)
+      ? "CGST/SGST"
+      : "IGST";
+}
+
+  const amount = Number(updatedForm.amount || 0);
+  const gstRate = Number(updatedForm.gstRate || 0);
+
+  const gstAmount = updatedForm.gstApplicable
+    ? (amount * gstRate) / 100
+    : 0;
+
+  const totalAmount = Number((amount + gstAmount).toFixed(2));
+
+  let paidAmount = Number(updatedForm.paidAmount || 0);
+
+  if (name === "status" && fieldValue === "Pending") {
+    paidAmount = 0;
+    updatedForm.mode = "";
+    updatedForm.referenceNo = "";
+  }
+
+  if (name === "status" && fieldValue === "Paid") {
+    paidAmount = totalAmount;
+    updatedForm.mode = updatedForm.mode || "Cash";
+  }
+
+  if (paidAmount > totalAmount) {
+    paidAmount = totalAmount;
+  }
+
+  const dueAmount = Math.max(totalAmount - paidAmount, 0);
+
+  let status = updatedForm.status;
+
+  if (paidAmount <= 0) status = "Pending";
+  else if (paidAmount < totalAmount) status = "Partial";
+  else status = "Paid";
+
+  updatedForm.gst = Number(gstAmount.toFixed(2));
+  updatedForm.totalAmount = totalAmount;
+  updatedForm.paidAmount = paidAmount;
+  updatedForm.dueAmount = dueAmount;
+  updatedForm.status = status;
+
+  setForm(updatedForm);
+};
 
  const handleSubmit = (e) => {
   e.preventDefault();
 
-  const payload = {
-    ...form,
-    id: editMode ? form.id : Date.now(),
-    amount: Number(form.amount || 0),
-    gst: Number(form.gst || 0),
-    totalAmount:
-      Number(form.totalAmount || 0) ||
-      Number(form.amount || 0) + Number(form.gst || 0),
-  };
+  const totalAmount =
+  Number(form.totalAmount || 0) ||
+  Number(form.amount || 0) + Number(form.gst || 0);
+
+const paidAmount = Number(form.paidAmount || 0);
+const dueAmount = Math.max(totalAmount - paidAmount, 0);
+
+const payload = {
+  ...form,
+  id: editMode ? form.id : Date.now(),
+  amount: Number(form.amount || 0),
+  gst: Number(form.gst || 0),
+  totalAmount,
+  paidAmount,
+  dueAmount,
+  status:
+    paidAmount <= 0
+      ? "Pending"
+      : paidAmount < totalAmount
+      ? "Partial"
+      : "Paid",
+  mode: paidAmount <= 0 ? "" : form.mode,
+  referenceNo: paidAmount <= 0 ? "" : form.referenceNo,
+};
 
   if (editMode) {
     dispatch(updateExpense(payload));
@@ -449,6 +529,9 @@ const expenses = useSelector((state) => state.expenses?.expenses || []);
               <Th>Amount</Th>
               <Th>GST</Th>
               <Th>Total</Th>
+              <Th>Paid</Th>
+<Th>Due</Th>
+
               <Th>Mode</Th>
               <Th>Status</Th>
               <Th>Actions</Th>
@@ -468,6 +551,8 @@ const expenses = useSelector((state) => state.expenses?.expenses || []);
                 <Td>₹{expense.amount}</Td>
                 <Td>₹{expense.gst}</Td>
                 <Td bold>₹{expense.totalAmount}</Td>
+                <Td>₹{expense.paidAmount}</Td>
+                <Td>₹{expense.dueAmount}</Td>
                 <Td>{expense.mode}</Td>
                 <Td>
                   <StatusBadge status={expense.status} />
@@ -559,24 +644,123 @@ function ExpenseModal({
             <Input label="Category" name="category" value={form.category} onChange={handleChange} required placeholder="Rent / Salary / Travel" />
             <Input label="Paid To" name="paidTo" value={form.paidTo} onChange={handleChange} required />
             <Input label="Amount" name="amount" type="number" value={form.amount} onChange={handleChange} required />
-            <Input label="GST Amount" name="gst" type="number" value={form.gst} onChange={handleChange} />
-            <Input label="Total Amount" name="totalAmount" type="number" value={form.totalAmount} onChange={handleChange} required />
+            <div className="flex items-center gap-3 pt-8">
+  <input
+  type="checkbox"
+  name="gstApplicable"
+  checked={form.gstApplicable}
+  onChange={handleChange}
+  className="h-4 w-4"
+/>
 
-            <div>
-              <label className="mb-1 block text-sm font-bold">Payment Mode</label>
-              <select
-                name="mode"
-                value={form.mode}
-                onChange={handleChange}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
-              >
-                <option value="Cash">Cash</option>
-                <option value="Bank">Bank</option>
-                <option value="UPI">UPI</option>
-                <option value="Card">Card</option>
-              </select>
-            </div>
+  <label className="text-sm font-bold">
+    GST / ITC Applicable
+  </label>
+</div>
+{form.gstApplicable && (
+  <>
+    <Input
+      label="GST Rate %"
+      name="gstRate"
+      type="number"
+      value={form.gstRate}
+      onChange={handleChange}
+    />
 
+    <Input
+      label="Vendor GSTIN"
+      name="vendorGstin"
+      value={form.vendorGstin}
+      onChange={handleChange}
+    />
+
+    <Input
+      label="Invoice No"
+      name="invoiceNo"
+      value={form.invoiceNo}
+      onChange={handleChange}
+    />
+
+    <Input
+      label="Invoice Date"
+      name="invoiceDate"
+      type="date"
+      value={form.invoiceDate}
+      onChange={handleChange}
+    />
+
+    <Input
+      label="Place Of Supply"
+      name="placeOfSupply"
+      value={form.placeOfSupply}
+      onChange={handleChange}
+    />
+
+    <div>
+      <label className="mb-1 block text-sm font-bold">
+        GST Type
+      </label>
+
+     <select
+  name="gstType"
+  value={form.gstType}
+  disabled
+  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none opacity-70"
+>
+  <option value="CGST/SGST">CGST/SGST</option>
+  <option value="IGST">IGST</option>
+</select>
+    </div>
+  </>
+)}
+          
+          
+        
+          <Input
+  label="Total Amount"
+  name="totalAmount"
+  type="number"
+  value={form.totalAmount}
+  readOnly
+/>
+
+<Input
+  label="Paid Amount"
+  name="paidAmount"
+  type="number"
+  value={form.paidAmount}
+  onChange={handleChange}
+  readOnly={form.status === "Pending"}
+/>
+
+<Input
+  label="Due Amount"
+  name="dueAmount"
+  type="number"
+  value={form.dueAmount}
+  readOnly
+/>
+
+           {form.status !== "Pending" && (
+  <>
+    <div>
+      <label className="mb-1 block text-sm font-bold">Payment Mode</label>
+      <select
+        name="mode"
+        value={form.mode}
+        onChange={handleChange}
+        className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
+      >
+        <option value="Cash">Cash</option>
+        <option value="Bank">Bank</option>
+        <option value="UPI">UPI</option>
+        <option value="Card">Card</option>
+      </select>
+    </div>
+
+   
+  </>
+)}
             <Input label="Reference No" name="referenceNo" value={form.referenceNo} onChange={handleChange} placeholder="UPI / Bank / Voucher" />
 
             <div>
@@ -588,7 +772,8 @@ function ExpenseModal({
                 className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
               >
                 <option value="Paid">Paid</option>
-                <option value="Pending">Pending</option>
+<option value="Partial">Partial</option>
+<option value="Pending">Pending</option>
               </select>
             </div>
           </div>
@@ -605,12 +790,28 @@ function ExpenseModal({
             />
           </div>
 
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5">
-            <div className="flex items-center justify-between font-black">
-              <span>Total Expense Amount</span>
-              <span>₹{Number(form.totalAmount || 0)}</span>
-            </div>
-          </div>
+         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-5">
+  <div className="grid gap-3 md:grid-cols-3">
+    <div>
+      <p className="text-sm font-bold text-[var(--muted)]">Taxable Amount</p>
+      <p className="text-xl font-black">₹{Number(form.amount || 0)}</p>
+    </div>
+
+    <div>
+      <p className="text-sm font-bold text-[var(--muted)]">GST Amount</p>
+      <p className="text-xl font-black">₹{Number(form.gst || 0)}</p>
+    </div>
+
+    <div className="text-right">
+      <p className="text-sm font-bold text-[var(--muted)]">
+        Total Expense Amount
+      </p>
+      <p className="text-2xl font-black">
+        ₹{Number(form.totalAmount || 0)}
+      </p>
+    </div>
+  </div>
+</div>
 
           <div className="flex justify-end gap-3 border-t border-[var(--border)] pt-5">
             <button
@@ -698,6 +899,7 @@ function Input({
   required = false,
   placeholder = "",
   min,
+  readOnly = false,
 }) {
   return (
     <div>
@@ -710,6 +912,7 @@ function Input({
         min={min}
         onChange={onChange}
         required={required}
+        readOnly={readOnly}
         placeholder={placeholder || label}
         className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
       />
@@ -740,10 +943,11 @@ function Info({ label, value }) {
 }
 
 function StatusBadge({ status }) {
-  const styles = {
-    Paid: "bg-green-100 text-green-700",
-    Pending: "bg-yellow-100 text-yellow-700",
-  };
+ const styles = {
+  Paid: "bg-green-100 text-green-700",
+  Partial: "bg-blue-100 text-blue-700",
+  Pending: "bg-yellow-100 text-yellow-700",
+};
 
   return (
     <span

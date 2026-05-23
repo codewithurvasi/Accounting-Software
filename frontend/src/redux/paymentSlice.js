@@ -18,7 +18,6 @@ const paymentSlice = createSlice({
   reducers: {
     addPayment: (state, action) => {
       state.payments.unshift(action.payload);
-
       savePayments(state);
     },
 
@@ -26,7 +25,7 @@ const paymentSlice = createSlice({
       const updatedPayment = action.payload;
 
       state.payments = state.payments.map((payment) =>
-        payment.id === updatedPayment.id
+        String(payment.id) === String(updatedPayment.id)
           ? updatedPayment
           : payment
       );
@@ -36,7 +35,49 @@ const paymentSlice = createSlice({
 
     deletePayment: (state, action) => {
       state.payments = state.payments.filter(
-        (payment) => payment.id !== action.payload
+        (payment) => String(payment.id) !== String(action.payload)
+      );
+
+      savePayments(state);
+    },
+
+    updateAutoPaymentByInvoiceNo: (state, action) => {
+      const { invoiceNo, paymentData } = action.payload;
+
+      const index = state.payments.findIndex(
+        (payment) =>
+          String(payment.invoiceNo || payment.invoice) === String(invoiceNo) &&
+          payment.source === "invoice"
+      );
+
+      if (index !== -1) {
+        state.payments[index] = {
+          ...state.payments[index],
+          ...paymentData,
+          source: "invoice",
+        };
+      } else {
+        state.payments.unshift({
+          id: Date.now(),
+          paymentNo: `PAY-${String(state.payments.length + 1).padStart(
+            3,
+            "0"
+          )}`,
+          ...paymentData,
+          source: "invoice",
+        });
+      }
+
+      savePayments(state);
+    },
+
+    deletePaymentByInvoiceNo: (state, action) => {
+      state.payments = state.payments.filter(
+        (payment) =>
+          !(
+            String(payment.invoiceNo || payment.invoice) ===
+              String(action.payload) && payment.source === "invoice"
+          )
       );
 
       savePayments(state);
@@ -48,6 +89,8 @@ export const {
   addPayment,
   updatePayment,
   deletePayment,
+  updateAutoPaymentByInvoiceNo,
+  deletePaymentByInvoiceNo,
 } = paymentSlice.actions;
 
 export default paymentSlice.reducer;

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { toWords } from "number-to-words";
 import { useDispatch, useSelector } from "react-redux";
-import { addPayment } from "../../redux/paymentSlice";
 import { addCustomer } from "../../redux/customerSlice";
-import { addProduct, reduceProductStock } from "../../redux/productSlice";
+import { addProduct, reduceProductStock, increaseProductStock } from "../../redux/productSlice";
 import { addPaymentMade } from "../../redux/paymentMadeSlice";
+import { addPayment, deletePaymentByInvoiceNo, updateAutoPaymentByInvoiceNo } from "../../redux/paymentSlice";
+
 import {
   addInvoice,
   updateInvoice,
@@ -407,9 +408,58 @@ export default function Invoices() {
             ? "Partial"
             : "Unpaid",
     };
-    if (editMode) {
-      dispatch(updateInvoice(invoiceData));
-    } else {
+   if (editMode) {
+  const oldInvoice = invoices.find((inv) => String(inv.id) === String(form.id));
+
+  if (oldInvoice) {
+    dispatch(
+      increaseProductStock(
+        oldInvoice.items.map((item) => ({
+          productId: item.productId,
+          warehouseId: item.warehouseId,
+          warehouseName: item.warehouseName,
+          qty: Number(item.qty || 0),
+        }))
+      )
+    );
+  }
+
+  dispatch(updateInvoice(invoiceData));
+
+  dispatch(
+    reduceProductStock(
+      invoiceData.items.map((item) => ({
+        productId: item.productId,
+        warehouseId: item.warehouseId,
+        warehouseName: item.warehouseName,
+        qty: Number(item.qty || 0),
+      }))
+    )
+  );
+
+  if (Number(invoiceData.paidAmount || 0) > 0) {
+    dispatch(
+      updateAutoPaymentByInvoiceNo({
+        invoiceNo: invoiceData.invoiceNo,
+        paymentData: {
+          date: invoiceData.invoiceDate,
+          customer: invoiceData.customer,
+          customerName: invoiceData.customer,
+          invoice: invoiceData.invoiceNo,
+          invoiceNo: invoiceData.invoiceNo,
+          amount: Number(invoiceData.paidAmount || 0),
+          mode: invoiceData.paymentMode || "Cash",
+          paymentMode: invoiceData.paymentMode || "Cash",
+          status: invoiceData.status,
+          notes: `Auto payment from invoice ${invoiceData.invoiceNo}`,
+          source: "invoice",
+        },
+      })
+    );
+  } else {
+    dispatch(deletePaymentByInvoiceNo(invoiceData.invoiceNo));
+  }
+} else {
       dispatch(addInvoice(invoiceData));
 
       dispatch(
@@ -436,6 +486,7 @@ export default function Invoices() {
             mode: invoiceData.paymentMode || "Cash",
             paymentMode: invoiceData.paymentMode || "Cash",
             status: invoiceData.status,
+            source: "invoice",
             notes: `Auto payment from invoice ${invoiceData.invoiceNo}`,
           }),
         );
@@ -496,12 +547,29 @@ export default function Invoices() {
     setShowModal(true);
   };
 
-  const handleDelete = (id) => {
-    const ok = window.confirm("Are you sure you want to delete this invoice?");
-    if (!ok) return;
+ const handleDelete = (id) => {
+  const invoice = invoices.find((inv) => String(inv.id) === String(id));
 
-    dispatch(deleteInvoice(id));
-  };
+  const ok = window.confirm("Are you sure you want to delete this invoice?");
+  if (!ok) return;
+
+  if (invoice) {
+    dispatch(
+      increaseProductStock(
+        invoice.items.map((item) => ({
+          productId: item.productId,
+          warehouseId: item.warehouseId,
+          warehouseName: item.warehouseName,
+          qty: Number(item.qty || 0),
+        }))
+      )
+    );
+
+    dispatch(deletePaymentByInvoiceNo(invoice.invoiceNo));
+  }
+
+  dispatch(deleteInvoice(id));
+};
 
   const resetFilters = () => {
     setSearch("");
@@ -953,9 +1021,9 @@ export default function Invoices() {
       </div>
 
       {showModal && (
-       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-  <div className="max-h-[95vh] w-full max-w-7xl overflow-y-auto rounded-3xl bg-[var(--surface)] p-5 shadow-2xl">
-           <div className="mb-5 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[95vh] w-full max-w-7xl overflow-y-auto rounded-3xl bg-[var(--surface)] p-5 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
               <div>
                 <h2 className="text-3xl font-black">
                   {editMode ? "Edit Invoice" : "Create Invoice"}
@@ -1027,20 +1095,20 @@ export default function Invoices() {
               )}
 
               <div>
-               <div className="relative w-full overflow-visible rounded-2xl border border-[var(--border)]">
-                 <table className="w-full border-separate border-spacing-y-2 text-sm">
+                <div className="relative w-full overflow-visible rounded-2xl border border-[var(--border)]">
+                  <table className="w-full border-separate border-spacing-y-2 text-sm">
                     <thead className="bg-[var(--surface-soft)]">
                       <tr>
-                       <Th className="w-[220px]">Product</Th>
+                        <Th className="w-[220px]">Product</Th>
                         <Th className="w-[190px]">Warehouse</Th>
                         <Th>HSN</Th>
-                       <Th className="w-[90px]">Qty</Th>
-<Th className="w-[110px]">Rate</Th>
-<Th className="w-[110px]">Discount</Th>
-<Th className="w-[90px]">GST %</Th>
-                       
+                        <Th className="w-[90px]">Qty</Th>
+                        <Th className="w-[110px]">Rate</Th>
+                        <Th className="w-[110px]">Discount</Th>
+                        <Th className="w-[90px]">GST %</Th>
+
                         <Th className="w-[120px]">Amount</Th>
-<Th className="w-[120px]">Total</Th>
+                        <Th className="w-[120px]">Total</Th>
                         <Th>Action</Th>
                       </tr>
                     </thead>
@@ -1059,10 +1127,7 @@ export default function Invoices() {
                         const itemTotal = taxable + itemGst;
 
                         return (
-                          <tr
-  key={index}
-  className="rounded-xl bg-white"
->
+                          <tr key={index} className="rounded-xl bg-white">
                             <Td>
                               <ProductSearchBox
                                 products={products || []}
@@ -1115,7 +1180,7 @@ export default function Invoices() {
                                   });
                                 }}
                                 disabled={!item.product}
-                               className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
+                                className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-soft)] px-2 py-2.5 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100"
                               >
                                 <option value="">
                                   {!item.product
@@ -1156,11 +1221,6 @@ export default function Invoices() {
                                 className="w-24 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 py-3 outline-none"
                               />
                             </Td>
-                            {/* {item.product && (
-                              <p className="mt-1 text-xs font-bold text-slate-500">
-                                Stock: {item.stock || 0}
-                              </p>
-                            )} */}
 
                             <Td>
                               <input
@@ -1935,7 +1995,7 @@ function Input({
         required={required}
         readOnly={readOnly}
         onChange={onChange}
-       className={`w-full rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm outline-none ${
+        className={`w-full rounded-lg border border-[var(--border)] px-3 py-2.5 text-sm outline-none ${
           readOnly
             ? "cursor-not-allowed bg-slate-100 text-slate-500"
             : "bg-[var(--surface-soft)]"
@@ -2004,8 +2064,6 @@ function CustomerSearchBox({
       <label className="mb-1 block text-sm font-bold">Customer</label>
 
       <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4">
-        {/* <Search size={17} className="text-[var(--muted)]" /> */}
-
         <input
           value={query}
           onChange={(e) => handleChange(e.target.value)}
@@ -2097,7 +2155,7 @@ function ProductSearchBox({
   };
 
   return (
-  <div className="relative w-full overflow-visible">
+    <div className="relative w-full overflow-visible">
       <input
         ref={inputRef}
         value={value}
@@ -2111,7 +2169,7 @@ function ProductSearchBox({
       />
 
       {open && query.length >= 1 && (
-       <div className="absolute left-0 top-[48px] z-[9999999] w-[330px] overflow-visible rounded-xl border border-[var(--border)] bg-white shadow-2xl">
+        <div className="absolute left-0 top-[48px] z-[9999999] w-[330px] overflow-visible rounded-xl border border-[var(--border)] bg-white shadow-2xl">
           {filteredProducts.length > 0 ? (
             filteredProducts.map((product) => (
               <button
@@ -2531,15 +2589,6 @@ function QuickPaymentModal({ invoice, onClose, onSave }) {
               readOnly
             />
 
-            {/* <Input
-  label="Old Remaining"
-  name="remainingAmount"
-  type="number"
-  value={payment.remainingAmount}
-  onChange={handleChange}
-  readOnly
-/> */}
-
             {payment.status !== "Pending" && (
               <Input
                 label={
@@ -2647,9 +2696,9 @@ function Th({ children, className = "" }) {
 
 function Td({ children, bold }) {
   return (
-  <td
-  className={`px-3 py-2 align-middle text-sm whitespace-nowrap ${bold ? "font-bold" : ""}`}
->
+    <td
+      className={`px-3 py-2 align-middle text-sm whitespace-nowrap ${bold ? "font-bold" : ""}`}
+    >
       {children}
     </td>
   );

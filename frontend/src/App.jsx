@@ -39,6 +39,7 @@ import JournalEntries from "./pages/Accounts/JournalEntries";
 import Ledger from "./pages/Accounts/Ledger";
 import TrialBalance from "./pages/Accounts/TrialBalance";
 
+
 import ProfitLoss from "./pages/Reports/ProfitLoss";
 import BalanceSheet from "./pages/Reports/BalanceSheet";
 import CashFlow from "./pages/Reports/CashFlow";
@@ -46,6 +47,8 @@ import TaxReport from "./pages/Reports/TaxReport";
 import SalesReport from "./pages/Reports/SalesReport";
 import PurchaseReport from "./pages/Reports/PurchaseReport";
 import InventoryReport from "./pages/Reports/InventoryReport";
+import CashBankBook from "./pages/reports/CashBankBook";
+import PurchaseRegister from "./pages/Reports/PurchaseRegiter";
 
 import CompanyProfile from "./pages/Settings/CompanyProfile";
 import TaxesGst from "./pages/Settings/TaxesGst";
@@ -119,7 +122,8 @@ function Layout({ setLanguage }) {
             <Route path="/reports/purchase-report" element={<PurchaseReport />} />
             <Route path="/reports/inventory-report" element={<InventoryReport />} />
             <Route path="/reports/gst-reports" element={<GstReports />} />
-
+            <Route path="/reports/cash-bank-book" element={<CashBankBook />} />
+            <Route path="/reports/purchase-register" element={<PurchaseRegister />} />
             <Route path="settings/company-profile" element={<CompanyProfile />} />
 <Route path="settings/taxes-gst" element={<TaxesGst />} />
 <Route path="settings/invoice-settings" element={<InvoiceSettings />} />

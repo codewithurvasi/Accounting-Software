@@ -11,6 +11,14 @@ const paymentsMade = useSelector(
   (state) => state.paymentsMade?.paymentsMade || []
 );
 const vendorsData = useSelector((state) => state.vendors?.vendors || []);
+const purchaseReturns = useSelector(
+  (state) =>
+    state.purchaseReturns?.returns ||
+    state.purchaseReturns?.purchaseReturns ||
+    state.purchaseReturn?.returns ||
+    state.purchaseReturn?.purchaseReturns ||
+    []
+);
 
   const vendors = [
   "All Vendors",
@@ -48,6 +56,39 @@ const ledgerEntries = useMemo(() => {
       credit: 0,
     }));
 
+    const purchaseReturnEntries = purchaseReturns.map((item) => {
+  const total = Number(
+    item.total ||
+      item.totalAmount ||
+      item.returnTotal ||
+      item.returnAmount ||
+      item.amount ||
+      0
+  );
+
+  const itemsTotal = (item.items || []).reduce((sum, row) => {
+    const qty = Number(row.qty || row.returnQty || row.quantity || 0);
+    const rate = Number(row.rate || row.price || 0);
+    const gstRate = Number(row.gst || row.gstRate || 0);
+    const amount = qty * rate;
+    return sum + amount + (amount * gstRate) / 100;
+  }, 0);
+
+  const finalTotal = total || itemsTotal;
+
+  return {
+    id: `PR-${item.id || item.returnNo || item.purchaseReturnNo}`,
+    date: item.returnDate || item.date,
+    vendor: item.vendor || item.vendorName || item.supplierName,
+    type: "Purchase Return",
+    particular: `Purchase Return ${
+      item.returnNo || item.purchaseReturnNo || ""
+    } against ${item.billNo || item.vendorBillNo || "-"}`,
+    debit: finalTotal,
+    credit: 0,
+  };
+});
+
   const openingEntries = vendorsData
     .filter((vendor) => Number(vendor.openingPayable || 0) > 0)
     .map((vendor) => ({
@@ -60,8 +101,8 @@ const ledgerEntries = useMemo(() => {
       credit: Number(vendor.openingPayable || 0),
     }));
 
-  return [...openingEntries, ...billEntries, ...paymentEntries];
-}, [bills, paymentsMade, vendorsData]);
+  return [...openingEntries, ...billEntries, ...paymentEntries, ...purchaseReturnEntries];
+}, [bills, paymentsMade, vendorsData, purchaseReturns]);
 
  const [vendor, setVendor] = useState("All Vendors");
   const [search, setSearch] = useState("");
